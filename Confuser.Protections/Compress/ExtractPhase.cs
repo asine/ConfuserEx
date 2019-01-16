@@ -37,28 +37,28 @@ namespace Confuser.Protections.Compress {
 			if (isExe) {
 				var ctx = new CompressorContext {
 					ModuleIndex = context.CurrentModuleIndex,
-					Assembly = context.CurrentModule.Assembly
+					Assembly = context.CurrentModule.Assembly,
+					CompatMode = parameters.GetParameter(context, null, "compat", false)
 				};
 				context.Annotations.Set(context, Compressor.ContextKey, ctx);
 
 				ctx.ModuleName = context.CurrentModule.Name;
-				context.CurrentModule.Name = "koi";
-
 				ctx.EntryPoint = context.CurrentModule.EntryPoint;
-				context.CurrentModule.EntryPoint = null;
-
 				ctx.Kind = context.CurrentModule.Kind;
-				context.CurrentModule.Kind = ModuleKind.NetModule;
 
-				context.CurrentModule.Assembly.Modules.Remove(context.CurrentModule);
+				if (!ctx.CompatMode) {
+					context.CurrentModule.Name = "koi";
+					context.CurrentModule.EntryPoint = null;
+					context.CurrentModule.Kind = ModuleKind.NetModule;
+				}
 
 				context.CurrentModuleWriterListener.OnWriterEvent += new ResourceRecorder(ctx, context.CurrentModule).OnWriterEvent;
 			}
 		}
 
-		private class ResourceRecorder {
-			private readonly CompressorContext ctx;
-			private ModuleDef targetModule;
+		class ResourceRecorder {
+			readonly CompressorContext ctx;
+			ModuleDef targetModule;
 
 			public ResourceRecorder(CompressorContext ctx, ModuleDef module) {
 				this.ctx = ctx;
@@ -67,7 +67,7 @@ namespace Confuser.Protections.Compress {
 
 			public void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
 				if (e.WriterEvent == ModuleWriterEvent.MDEndAddResources) {
-					var writer = (ModuleWriter)sender;
+					var writer = (ModuleWriterBase)sender;
 					ctx.ManifestResources = new List<Tuple<uint, uint, string>>();
 					Dictionary<uint, byte[]> stringDict = writer.MetaData.StringsHeap.GetAllRawData().ToDictionary(pair => pair.Key, pair => pair.Value);
 					foreach (RawManifestResourceRow resource in writer.MetaData.TablesHeap.ManifestResourceTable)

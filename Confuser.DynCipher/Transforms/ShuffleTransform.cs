@@ -6,37 +6,39 @@ using Confuser.DynCipher.AST;
 
 namespace Confuser.DynCipher.Transforms {
 	internal class ShuffleTransform {
-		private const int ITERATION = 20;
+		const int ITERATION = 20;
 
-		private static IEnumerable<Variable> GetVariableUsage(Expression exp) {
+		static IEnumerable<Variable> GetVariableUsage(Expression exp) {
 			if (exp is VariableExpression)
 				yield return ((VariableExpression)exp).Variable;
 			else if (exp is ArrayIndexExpression) {
 				foreach (Variable i in GetVariableUsage(((ArrayIndexExpression)exp).Array))
 					yield return i;
-			} else if (exp is BinOpExpression) {
+			}
+			else if (exp is BinOpExpression) {
 				foreach (Variable i in GetVariableUsage(((BinOpExpression)exp).Left)
 					.Concat(GetVariableUsage(((BinOpExpression)exp).Right)))
 					yield return i;
-			} else if (exp is UnaryOpExpression) {
+			}
+			else if (exp is UnaryOpExpression) {
 				foreach (Variable i in GetVariableUsage(((UnaryOpExpression)exp).Value))
 					yield return i;
 			}
 		}
 
-		private static IEnumerable<Variable> GetVariableUsage(Statement st) {
+		static IEnumerable<Variable> GetVariableUsage(Statement st) {
 			if (st is AssignmentStatement) {
 				foreach (Variable i in GetVariableUsage(((AssignmentStatement)st).Value))
 					yield return i;
 			}
 		}
 
-		private static IEnumerable<Variable> GetVariableDefinition(Expression exp) {
+		static IEnumerable<Variable> GetVariableDefinition(Expression exp) {
 			if (exp is VariableExpression)
 				yield return ((VariableExpression)exp).Variable;
 		}
 
-		private static IEnumerable<Variable> GetVariableDefinition(Statement st) {
+		static IEnumerable<Variable> GetVariableDefinition(Statement st) {
 			if (st is AssignmentStatement) {
 				foreach (Variable i in GetVariableDefinition(((AssignmentStatement)st).Target))
 					yield return i;
@@ -46,7 +48,7 @@ namespace Confuser.DynCipher.Transforms {
 
 		// Cannot go before the statements that use the variable defined at the statement
 		// Cannot go further than the statements that override the variable used at the statement
-		private static int SearchUpwardKill(TransformContext context, Statement st, StatementBlock block, int startIndex) {
+		static int SearchUpwardKill(TransformContext context, Statement st, StatementBlock block, int startIndex) {
 			Variable[] usage = context.Usages[st];
 			Variable[] definition = context.Definitions[st];
 			for (int i = startIndex - 1; i >= 0; i--) {
@@ -57,7 +59,7 @@ namespace Confuser.DynCipher.Transforms {
 			return 0;
 		}
 
-		private static int SearchDownwardKill(TransformContext context, Statement st, StatementBlock block, int startIndex) {
+		static int SearchDownwardKill(TransformContext context, Statement st, StatementBlock block, int startIndex) {
 			Variable[] usage = context.Usages[st];
 			Variable[] definition = context.Definitions[st];
 			for (int i = startIndex + 1; i < block.Statements.Count; i++) {
@@ -93,7 +95,7 @@ namespace Confuser.DynCipher.Transforms {
 			}
 		}
 
-		private class TransformContext {
+		class TransformContext {
 			public Dictionary<Statement, Variable[]> Definitions;
 			public Statement[] Statements;
 			public Dictionary<Statement, Variable[]> Usages;

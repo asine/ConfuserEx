@@ -13,9 +13,9 @@ using MethodBody = dnlib.DotNet.Writer.MethodBody;
 
 namespace Confuser.Protections.ReferenceProxy {
 	internal class x86Encoding : IRPEncoding {
-		private readonly Dictionary<MethodDef, Tuple<MethodDef, Func<int, int>>> keys = new Dictionary<MethodDef, Tuple<MethodDef, Func<int, int>>>();
-		private readonly List<Tuple<MethodDef, byte[], MethodBody>> nativeCodes = new List<Tuple<MethodDef, byte[], MethodBody>>();
-		private bool addedHandler;
+		readonly Dictionary<MethodDef, Tuple<MethodDef, Func<int, int>>> keys = new Dictionary<MethodDef, Tuple<MethodDef, Func<int, int>>>();
+		readonly List<Tuple<MethodDef, byte[], MethodBody>> nativeCodes = new List<Tuple<MethodDef, byte[], MethodBody>>();
+		bool addedHandler;
 
 		public Instruction[] EmitDecode(MethodDef init, RPContext ctx, Instruction[] arg) {
 			Tuple<MethodDef, Func<int, int>> key = GetKey(ctx, init);
@@ -31,7 +31,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			return key.Item2(value);
 		}
 
-		private void Compile(RPContext ctx, out Func<int, int> expCompiled, out MethodDef native) {
+		void Compile(RPContext ctx, out Func<int, int> expCompiled, out MethodDef native) {
 			var var = new Variable("{VAR}");
 			var result = new Variable("{RESULT}");
 
@@ -40,7 +40,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			native.ImplAttributes = MethodImplAttributes.Native | MethodImplAttributes.Unmanaged | MethodImplAttributes.PreserveSig;
 			ctx.Module.GlobalType.Methods.Add(native);
 
-			ctx.Context.Registry.GetService<IMarkerService>().Mark(native);
+			ctx.Context.Registry.GetService<IMarkerService>().Mark(native, ctx.Protection);
 			ctx.Context.Registry.GetService<INameService>().SetCanRename(native, false);
 
 			x86Register? reg;
@@ -57,7 +57,7 @@ namespace Confuser.Protections.ReferenceProxy {
 
 			byte[] code = CodeGenUtils.AssembleCode(codeGen, reg.Value);
 
-			expCompiled = new DMCodeGen(typeof (int), new[] { Tuple.Create("{VAR}", typeof (int)) })
+			expCompiled = new DMCodeGen(typeof(int), new[] { Tuple.Create("{VAR}", typeof(int)) })
 				.GenerateCIL(expression)
 				.Compile<Func<int, int>>();
 
@@ -68,15 +68,16 @@ namespace Confuser.Protections.ReferenceProxy {
 			}
 		}
 
-		private void InjectNativeCode(object sender, ModuleWriterListenerEventArgs e) {
-			var writer = (ModuleWriter)sender;
+		void InjectNativeCode(object sender, ModuleWriterListenerEventArgs e) {
+			var writer = (ModuleWriterBase)sender;
 			if (e.WriterEvent == ModuleWriterEvent.MDEndWriteMethodBodies) {
 				for (int n = 0; n < nativeCodes.Count; n++)
-					nativeCodes[n] = new Tuple<MethodDef,byte[],MethodBody>(
+					nativeCodes[n] = new Tuple<MethodDef, byte[], MethodBody>(
 						nativeCodes[n].Item1,
 						nativeCodes[n].Item2,
 						writer.MethodBodies.Add(new MethodBody(nativeCodes[n].Item2)));
-			} else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
+			}
+			else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
 				foreach (var native in nativeCodes) {
 					uint rid = writer.MetaData.GetRid(native.Item1);
 					writer.MetaData.TablesHeap.MethodTable[rid].RVA = (uint)native.Item3.RVA;
@@ -84,7 +85,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			}
 		}
 
-		private Tuple<MethodDef, Func<int, int>> GetKey(RPContext ctx, MethodDef init) {
+		Tuple<MethodDef, Func<int, int>> GetKey(RPContext ctx, MethodDef init) {
 			Tuple<MethodDef, Func<int, int>> ret;
 			if (!keys.TryGetValue(init, out ret)) {
 				Func<int, int> keyFunc;
@@ -95,8 +96,8 @@ namespace Confuser.Protections.ReferenceProxy {
 			return ret;
 		}
 
-		private class CodeGen : CILCodeGen {
-			private readonly Instruction[] arg;
+		class CodeGen : CILCodeGen {
+			readonly Instruction[] arg;
 
 			public CodeGen(Instruction[] arg, MethodDef method, IList<Instruction> instrs)
 				: base(method, instrs) {
@@ -106,8 +107,9 @@ namespace Confuser.Protections.ReferenceProxy {
 			protected override void LoadVar(Variable var) {
 				if (var.Name == "{RESULT}") {
 					foreach (Instruction instr in arg)
-						base.Emit(instr);
-				} else
+						Emit(instr);
+				}
+				else
 					base.LoadVar(var);
 			}
 		}

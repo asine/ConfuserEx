@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Confuser.Core;
 using dnlib.DotNet.Emit;
 
 namespace Confuser.Protections.ControlFlow {
@@ -24,7 +23,8 @@ namespace Confuser.Protections.ControlFlow {
 				if (eh.FilterStart != null) {
 					var filterBlock = new ScopeBlock(BlockType.Filter, eh);
 					ehScopes[eh] = Tuple.Create(tryBlock, handlerBlock, filterBlock);
-				} else
+				}
+				else
 					ehScopes[eh] = Tuple.Create(tryBlock, handlerBlock, (ScopeBlock)null);
 			}
 
@@ -76,6 +76,12 @@ namespace Confuser.Protections.ControlFlow {
 				if (block == null)
 					scope.Children.Add(block = new InstrBlock());
 				block.Instructions.Add(instr);
+			}
+			foreach (ExceptionHandler eh in body.ExceptionHandlers) {
+				if (eh.TryEnd == null)
+					scopeStack.Pop();
+				if (eh.HandlerEnd == null)
+					scopeStack.Pop();
 			}
 			Debug.Assert(scopeStack.Count == 1);
 			return root;

@@ -39,10 +39,10 @@ namespace Confuser.Protections {
 		}
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {
-			pipeline.InsertPostStage(PipelineStage.BeginModule, new AntiDumpPhase(this));
+			pipeline.InsertPreStage(PipelineStage.ProcessModule, new AntiDumpPhase(this));
 		}
 
-		private class AntiDumpPhase : ProtectionPhase {
+		class AntiDumpPhase : ProtectionPhase {
 			public AntiDumpPhase(AntiDumpProtection parent)
 				: base(parent) { }
 
@@ -68,7 +68,7 @@ namespace Confuser.Protections {
 					cctor.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, init));
 
 					foreach (IDnlibDef member in members)
-						name.MarkHelper(member, marker);
+						name.MarkHelper(member, marker, (Protection)Parent);
 				}
 			}
 		}

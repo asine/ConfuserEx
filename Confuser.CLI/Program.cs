@@ -1,82 +1,167 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Xml;
 using Confuser.Core;
 using Confuser.Core.Project;
+using NDesk.Options;
 
 namespace Confuser.CLI {
 	internal class Program {
-		private static int Main(string[] args) {
+		static int Main(string[] args) {
 			ConsoleColor original = Console.ForegroundColor;
 			Console.ForegroundColor = ConsoleColor.White;
 			string originalTitle = Console.Title;
 			Console.Title = "ConfuserEx";
-
 			try {
-				if (args.Length < 1) {
-					PrintUsage();
-					return 0;
-				}
+				bool noPause = false;
+				bool debug = false;
+				string outDir = null;
+				List<string> probePaths = new List<string>();
+				List<string> plugins = new List<string>();
+				var p = new OptionSet {
+					{
+						"n|nopause", "no pause after finishing protection.",
+						value => { noPause = (value != null); }
+					}, {
+						"o|out=", "specifies output directory.",
+						value => { outDir = value; }
+					}, {
+						"probe=", "specifies probe directory.",
+						value => { probePaths.Add(value); }
+					}, {
+						"plugin=", "specifies plugin path.",
+						value => { plugins.Add(value); }
+					}, {
+						"debug", "specifies debug symbol generation.",
+						value => { debug = (value != null); }
+					}
+				};
 
-				var proj = new ConfuserProject();
+				List<string> files;
 				try {
-					var xmlDoc = new XmlDocument();
-					xmlDoc.Load(args[0]);
-					proj.Load(xmlDoc);
-					proj.BaseDirectory = Path.Combine(Path.GetDirectoryName(args[0]), proj.BaseDirectory);
-				} catch (Exception ex) {
-					WriteLineWithColor(ConsoleColor.Red, "Failed to load project:");
-					WriteLineWithColor(ConsoleColor.Red, ex.ToString());
+					files = p.Parse(args);
+					if (files.Count == 0)
+						throw new ArgumentException("No input files specified.");
+				}
+				catch (Exception ex) {
+					Console.Write("ConfuserEx.CLI: ");
+					Console.WriteLine(ex.Message);
+					PrintUsage();
 					return -1;
 				}
 
 				var parameters = new ConfuserParameters();
-				parameters.Project = proj;
-				var logger = new ConsoleLogger();
-				parameters.Logger = new ConsoleLogger();
 
-				Console.Title = "ConfuserEx - Running...";
-				ConfuserEngine.Run(parameters).Wait();
+				if (files.Count == 1 && Path.GetExtension(files[0]) == ".crproj") {
+					var proj = new ConfuserProject();
+					try {
+						var xmlDoc = new XmlDocument();
+						xmlDoc.Load(files[0]);
+						proj.Load(xmlDoc);
+						proj.BaseDirectory = Path.Combine(Path.GetDirectoryName(files[0]), proj.BaseDirectory);
+					}
+					catch (Exception ex) {
+						WriteLineWithColor(ConsoleColor.Red, "Failed to load project:");
+						WriteLineWithColor(ConsoleColor.Red, ex.ToString());
+						return -1;
+					}
 
-				if (NeedPause()) {
+					parameters.Project = proj;
+				}
+				else {
+					if (string.IsNullOrEmpty(outDir)) {
+						Console.WriteLine("ConfuserEx.CLI: No output directory specified.");
+						PrintUsage();
+						return -1;
+					}
+
+					var proj = new ConfuserProject();
+
+					if (Path.GetExtension(files[files.Count - 1]) == ".crproj") {
+						var templateProj = new ConfuserProject();
+						var xmlDoc = new XmlDocument();
+						xmlDoc.Load(files[files.Count - 1]);
+						templateProj.Load(xmlDoc);
+						files.RemoveAt(files.Count - 1);
+
+						foreach (var rule in templateProj.Rules)
+							proj.Rules.Add(rule);
+					}
+
+					// Generate a ConfuserProject for input modules
+					// Assuming first file = main module
+					foreach (var input in files)
+						proj.Add(new ProjectModule { Path = input });
+
+					proj.BaseDirectory = Path.GetDirectoryName(files[0]);
+					proj.OutputDirectory = outDir;
+					foreach (var path in probePaths)
+						proj.ProbePaths.Add(path);
+					foreach (var path in plugins)
+						proj.PluginPaths.Add(path);
+					proj.Debug = debug;
+					parameters.Project = proj;
+				}
+
+				int retVal = RunProject(parameters);
+
+				if (NeedPause() && !noPause) {
 					Console.WriteLine("Press any key to continue...");
 					Console.ReadKey(true);
 				}
 
-				return logger.ReturnValue;
-			} finally {
+				return retVal;
+			}
+			finally {
 				Console.ForegroundColor = original;
 				Console.Title = originalTitle;
 			}
 		}
 
-		private static bool NeedPause() {
+		static int RunProject(ConfuserParameters parameters) {
+			var logger = new ConsoleLogger();
+			parameters.Logger = logger;
+
+			Console.Title = "ConfuserEx - Running...";
+			ConfuserEngine.Run(parameters).Wait();
+
+			return logger.ReturnValue;
+		}
+
+		static bool NeedPause() {
 			return Debugger.IsAttached || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PROMPT"));
 		}
 
-		private static void PrintUsage() {
+		static void PrintUsage() {
 			WriteLine("Usage:");
-			WriteLine("Confuser.CLI.exe <project configuration>");
+			WriteLine("Confuser.CLI -n|noPause <project configuration>");
+			WriteLine("Confuser.CLI -n|noPause -o|out=<output directory> <modules>");
+			WriteLine("    -n|noPause : no pause after finishing protection.");
+			WriteLine("    -o|out     : specifies output directory.");
+			WriteLine("    -probe     : specifies probe directory.");
+			WriteLine("    -plugin    : specifies plugin path.");
+			WriteLine("    -debug     : specifies debug symbol generation.");
 		}
 
-		private static void WriteLineWithColor(ConsoleColor color, string txt) {
+		static void WriteLineWithColor(ConsoleColor color, string txt) {
 			ConsoleColor original = Console.ForegroundColor;
 			Console.ForegroundColor = color;
 			Console.WriteLine(txt);
 			Console.ForegroundColor = original;
 		}
 
-		private static void WriteLine(string txt) {
+		static void WriteLine(string txt) {
 			Console.WriteLine(txt);
 		}
 
-		private static void WriteLine() {
+		static void WriteLine() {
 			Console.WriteLine();
 		}
 
-		private class ConsoleLogger : ILogger {
-			private readonly DateTime begin;
+		class ConsoleLogger : ILogger {
+			readonly DateTime begin;
 
 			public ConsoleLogger() {
 				begin = DateTime.Now;
@@ -141,7 +226,8 @@ namespace Confuser.CLI {
 					Console.Title = "ConfuserEx - Success";
 					WriteLineWithColor(ConsoleColor.Green, "Finished " + timeString);
 					ReturnValue = 0;
-				} else {
+				}
+				else {
 					Console.Title = "ConfuserEx - Fail";
 					WriteLineWithColor(ConsoleColor.Red, "Failed " + timeString);
 					ReturnValue = 1;

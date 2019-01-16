@@ -6,11 +6,11 @@ using System.Windows.Data;
 namespace ConfuserEx {
 	internal class InvertBoolConverter : IValueConverter {
 		public static readonly InvertBoolConverter Instance = new InvertBoolConverter();
-		private InvertBoolConverter() { }
+		InvertBoolConverter() { }
 
 		public object Convert(object value, Type targetType, object parameter, CultureInfo culture) {
 			Debug.Assert(value is bool);
-			Debug.Assert(targetType == typeof (bool));
+			Debug.Assert(targetType == typeof(bool));
 			return !(bool)value;
 		}
 

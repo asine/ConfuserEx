@@ -28,6 +28,6 @@ namespace Confuser.Core {
 		Modules = 32,
 
 		/// <summary> All definitions (i.e. All member definitions and modules). </summary>
-		AllDefinitions = AllMembers | Modules,
+		AllDefinitions = AllMembers | Modules
 	}
 }

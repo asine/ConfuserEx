@@ -31,6 +31,7 @@ namespace Confuser.Protections.Constants {
 				var marker = context.Registry.GetService<IMarkerService>();
 				var rt = context.Registry.GetService<IRuntimeService>();
 				var moduleCtx = new CEContext {
+					Protection = (ConstantProtection)Parent,
 					Random = context.Registry.GetService<IRandomService>().GetRandomGenerator(Parent.Id),
 					Context = context,
 					Module = context.CurrentModule,
@@ -61,7 +62,7 @@ namespace Confuser.Protections.Constants {
 
 				// Inject helpers
 				MethodDef decomp = compression.GetRuntimeDecompressor(context.CurrentModule, member => {
-					name.MarkHelper(member, marker);
+					name.MarkHelper(member, marker, (Protection)Parent);
 					if (member is MethodDef)
 						ProtectionParameters.GetParameters(context, member).Remove(Parent);
 				});
@@ -77,7 +78,7 @@ namespace Confuser.Protections.Constants {
 			}
 		}
 
-		private void InjectHelpers(ConfuserContext context, ICompressionService compression, IRuntimeService rt, CEContext moduleCtx) {
+		void InjectHelpers(ConfuserContext context, ICompressionService compression, IRuntimeService rt, CEContext moduleCtx) {
 			IEnumerable<IDnlibDef> members = InjectHelper.Inject(rt.GetRuntimeType("Confuser.Runtime.Constant"), context.CurrentModule.GlobalType, context.CurrentModule);
 			foreach (IDnlibDef member in members) {
 				if (member.Name == "Get") {
@@ -88,7 +89,7 @@ namespace Confuser.Protections.Constants {
 					moduleCtx.BufferField = (FieldDef)member;
 				else if (member.Name == "Initialize")
 					moduleCtx.InitMethod = (MethodDef)member;
-				moduleCtx.Name.MarkHelper(member, moduleCtx.Marker);
+				moduleCtx.Name.MarkHelper(member, moduleCtx.Marker, (Protection)Parent);
 			}
 			ProtectionParameters.GetParameters(context, moduleCtx.InitMethod).Remove(Parent);
 
@@ -98,14 +99,14 @@ namespace Confuser.Protections.Constants {
 			dataType.IsSealed = true;
 			moduleCtx.DataType = dataType;
 			context.CurrentModule.GlobalType.NestedTypes.Add(dataType);
-			moduleCtx.Name.MarkHelper(dataType, moduleCtx.Marker);
+			moduleCtx.Name.MarkHelper(dataType, moduleCtx.Marker, (Protection)Parent);
 
 			moduleCtx.DataField = new FieldDefUser(moduleCtx.Name.RandomName(), new FieldSig(dataType.ToTypeSig())) {
 				IsStatic = true,
 				Access = FieldAttributes.CompilerControlled
 			};
 			context.CurrentModule.GlobalType.Fields.Add(moduleCtx.DataField);
-			moduleCtx.Name.MarkHelper(moduleCtx.DataField, moduleCtx.Marker);
+			moduleCtx.Name.MarkHelper(moduleCtx.DataField, moduleCtx.Marker, (Protection)Parent);
 
 			MethodDef decoder = rt.GetRuntimeType("Confuser.Runtime.Constant").FindMethod("Get");
 			moduleCtx.Decoders = new List<Tuple<MethodDef, DecoderDesc>>();
@@ -119,14 +120,15 @@ namespace Confuser.Protections.Constants {
 					    method.DeclaringType.Name == "Mutation" &&
 					    method.Name == "Value") {
 						decoderInst.Body.Instructions[j] = Instruction.Create(OpCodes.Sizeof, new GenericMVar(0).ToTypeDefOrRef());
-					} else if (instr.OpCode == OpCodes.Ldsfld &&
-					           method.DeclaringType.Name == "Constant") {
+					}
+					else if (instr.OpCode == OpCodes.Ldsfld &&
+					         method.DeclaringType.Name == "Constant") {
 						if (field.Name == "b") instr.Operand = moduleCtx.BufferField;
 						else throw new UnreachableException();
 					}
 				}
 				context.CurrentModule.GlobalType.Methods.Add(decoderInst);
-				moduleCtx.Name.MarkHelper(decoderInst, moduleCtx.Marker);
+				moduleCtx.Name.MarkHelper(decoderInst, moduleCtx.Marker, (Protection)Parent);
 				ProtectionParameters.GetParameters(context, decoderInst).Remove(Parent);
 
 				var decoderDesc = new DecoderDesc();
@@ -145,7 +147,7 @@ namespace Confuser.Protections.Constants {
 			}
 		}
 
-		private void MutateInitializer(CEContext moduleCtx, MethodDef decomp) {
+		void MutateInitializer(CEContext moduleCtx, MethodDef decomp) {
 			moduleCtx.InitMethod.Body.SimplifyMacros(moduleCtx.InitMethod.Parameters);
 			List<Instruction> instrs = moduleCtx.InitMethod.Body.Instructions.ToList();
 			for (int i = 0; i < instrs.Count; i++) {
@@ -161,8 +163,9 @@ namespace Confuser.Protections.Constants {
 						instrs.RemoveAt(i - 1);
 						instrs.RemoveAt(i - 2);
 						instrs.InsertRange(i - 2, moduleCtx.ModeHandler.EmitDecrypt(moduleCtx.InitMethod, moduleCtx, (Local)ldBlock.Operand, (Local)ldKey.Operand));
-					} else if (method.DeclaringType.Name == "Lzma" &&
-					           method.Name == "Decompress") {
+					}
+					else if (method.DeclaringType.Name == "Lzma" &&
+					         method.Name == "Decompress") {
 						instr.Operand = decomp;
 					}
 				}

@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace Confuser.Runtime {
 	internal static class AntiDebugWin32 {
-		private static void Initialize() {
+		static void Initialize() {
 			string x = "COR";
 			if (Environment.GetEnvironmentVariable(x + "_PROFILER") != null ||
 			    Environment.GetEnvironmentVariable(x + "_ENABLE_PROFILING") != null)
@@ -17,15 +17,15 @@ namespace Confuser.Runtime {
 		}
 
 		[DllImport("kernel32.dll")]
-		private static extern bool CloseHandle(IntPtr hObject);
+		static extern bool CloseHandle(IntPtr hObject);
 
 		[DllImport("kernel32.dll")]
-		private static extern bool IsDebuggerPresent();
+		static extern bool IsDebuggerPresent();
 
-		[DllImport("kernel32.dll")]
-		private static extern int OutputDebugString(string str);
+		[DllImport("kernel32.dll", CharSet = CharSet.Auto)]
+		static extern int OutputDebugString(string str);
 
-		private static void Worker(object thread) {
+		static void Worker(object thread) {
 			var th = thread as Thread;
 			if (th == null) {
 				th = new Thread(Worker);
@@ -55,7 +55,8 @@ namespace Confuser.Runtime {
 				// CloseHandle
 				try {
 					CloseHandle(IntPtr.Zero);
-				} catch {
+				}
+				catch {
 					Environment.FailFast("");
 				}
 

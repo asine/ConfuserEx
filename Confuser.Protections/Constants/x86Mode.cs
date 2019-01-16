@@ -12,7 +12,7 @@ using MethodBody = dnlib.DotNet.Writer.MethodBody;
 
 namespace Confuser.Protections.Constants {
 	internal class x86Mode : IEncodeMode {
-		private Action<uint[], uint[]> encryptFunc;
+		Action<uint[], uint[]> encryptFunc;
 
 		public IEnumerable<Instruction> EmitDecrypt(MethodDef init, CEContext ctx, Local block, Local key) {
 			StatementBlock encrypt, decrypt;
@@ -23,9 +23,9 @@ namespace Confuser.Protections.Constants {
 			codeGen.GenerateCIL(decrypt);
 			codeGen.Commit(init.Body);
 
-			var dmCodeGen = new DMCodeGen(typeof (void), new[] {
-				Tuple.Create("{BUFFER}", typeof (uint[])),
-				Tuple.Create("{KEY}", typeof (uint[]))
+			var dmCodeGen = new DMCodeGen(typeof(void), new[] {
+				Tuple.Create("{BUFFER}", typeof(uint[])),
+				Tuple.Create("{KEY}", typeof(uint[]))
 			});
 			dmCodeGen.GenerateCIL(encrypt);
 			encryptFunc = dmCodeGen.Compile<Action<uint[], uint[]>>();
@@ -35,7 +35,7 @@ namespace Confuser.Protections.Constants {
 
 		public uint[] Encrypt(uint[] data, int offset, uint[] key) {
 			var ret = new uint[key.Length];
-			Buffer.BlockCopy(data, offset * sizeof (uint), ret, 0, key.Length * sizeof (uint));
+			Buffer.BlockCopy(data, offset * sizeof(uint), ret, 0, key.Length * sizeof(uint));
 			encryptFunc(ret, key);
 			return ret;
 		}
@@ -57,9 +57,9 @@ namespace Confuser.Protections.Constants {
 			return (uint)encoding.expCompiled((int)id);
 		}
 
-		private class CipherCodeGen : CILCodeGen {
-			private readonly Local block;
-			private readonly Local key;
+		class CipherCodeGen : CILCodeGen {
+			readonly Local block;
+			readonly Local key;
 
 			public CipherCodeGen(Local block, Local key, MethodDef init, IList<Instruction> instrs)
 				: base(init, instrs) {
@@ -76,13 +76,13 @@ namespace Confuser.Protections.Constants {
 			}
 		}
 
-		private class x86Encoding {
-			private byte[] code;
-			private MethodBody codeChunk;
+		class x86Encoding {
+			byte[] code;
+			MethodBody codeChunk;
 
 			public Func<int, int> expCompiled;
-			private Expression expression;
-			private Expression inverse;
+			Expression expression;
+			Expression inverse;
 			public MethodDef native;
 
 			public void Compile(CEContext ctx) {
@@ -98,7 +98,7 @@ namespace Confuser.Protections.Constants {
 				//native.HasSecurity = true;
 				ctx.Module.GlobalType.Methods.Add(native);
 
-				ctx.Name.MarkHelper(native, ctx.Marker);
+				ctx.Name.MarkHelper(native, ctx.Marker, ctx.Protection);
 
 				x86Register? reg;
 				var codeGen = new x86CodeGen();
@@ -113,7 +113,7 @@ namespace Confuser.Protections.Constants {
 
 				code = CodeGenUtils.AssembleCode(codeGen, reg.Value);
 
-				expCompiled = new DMCodeGen(typeof (int), new[] { Tuple.Create("{VAR}", typeof (int)) })
+				expCompiled = new DMCodeGen(typeof(int), new[] { Tuple.Create("{VAR}", typeof(int)) })
 					.GenerateCIL(expression)
 					.Compile<Func<int, int>>();
 
@@ -121,11 +121,12 @@ namespace Confuser.Protections.Constants {
 				ctx.Context.CurrentModuleWriterListener.OnWriterEvent += InjectNativeCode;
 			}
 
-			private void InjectNativeCode(object sender, ModuleWriterListenerEventArgs e) {
-				var writer = (ModuleWriter)sender;
+			void InjectNativeCode(object sender, ModuleWriterListenerEventArgs e) {
+				var writer = (ModuleWriterBase)sender;
 				if (e.WriterEvent == ModuleWriterEvent.MDEndWriteMethodBodies) {
 					codeChunk = writer.MethodBodies.Add(new MethodBody(code));
-				} else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
+				}
+				else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
 					uint rid = writer.MetaData.GetRid(native);
 					writer.MetaData.TablesHeap.MethodTable[rid].RVA = (uint)codeChunk.RVA;
 				}

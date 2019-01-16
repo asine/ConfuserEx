@@ -30,20 +30,13 @@ namespace Confuser.Protections.AntiTamper {
 		public uint Offset;
 		public uint Options;
 
-		private FileOffset offset;
-		private RVA rva;
+		public FileOffset FileOffset { get; set; }
 
-		public FileOffset FileOffset {
-			get { return offset; }
-		}
-
-		public RVA RVA {
-			get { return rva; }
-		}
+		public RVA RVA { get; set; }
 
 		public void SetOffset(FileOffset offset, RVA rva) {
-			this.offset = offset;
-			this.rva = rva;
+			this.FileOffset = offset;
+			this.RVA = rva;
 		}
 
 		public uint GetFileLength() {
@@ -114,10 +107,10 @@ namespace Confuser.Protections.AntiTamper {
 	}
 
 	internal class JITMethodBodyWriter : MethodBodyWriterBase {
-		private readonly CilBody body;
-		private readonly JITMethodBody jitBody;
-		private readonly bool keepMaxStack;
-		private readonly MetaData metadata;
+		readonly CilBody body;
+		readonly JITMethodBody jitBody;
+		readonly bool keepMaxStack;
+		readonly MetaData metadata;
 
 		public JITMethodBodyWriter(MetaData md, CilBody body, JITMethodBody jitBody, uint mulSeed, bool keepMaxStack) :
 			base(body.Instructions, body.ExceptionHandlers) {
@@ -139,7 +132,8 @@ namespace Confuser.Protections.AntiTamper {
 			if (body.Variables.Count > 0) {
 				var local = new LocalSig(body.Variables.Select(var => var.Type).ToList());
 				jitBody.LocalVars = SignatureWriter.Write(metadata, local);
-			} else
+			}
+			else
 				jitBody.LocalVars = new byte[0];
 
 			using (var ms = new MemoryStream()) {
@@ -171,7 +165,8 @@ namespace Confuser.Protections.AntiTamper {
 							jitBody.Options |= 0x80;
 
 						jitBody.EHs[i].ClassTokenOrFilterOffset = token;
-					} else if (eh.HandlerType == ExceptionHandlerType.Filter) {
+					}
+					else if (eh.HandlerType == ExceptionHandlerType.Filter) {
 						jitBody.EHs[i].ClassTokenOrFilterOffset = GetOffset(eh.FilterStart);
 					}
 				}
@@ -204,26 +199,19 @@ namespace Confuser.Protections.AntiTamper {
 	}
 
 	internal class JITBodyIndex : IChunk {
-		private readonly Dictionary<uint, JITMethodBody> bodies;
-
-		private FileOffset offset;
-		private RVA rva;
+		readonly Dictionary<uint, JITMethodBody> bodies;
 
 		public JITBodyIndex(IEnumerable<uint> tokens) {
 			bodies = tokens.ToDictionary(token => token, token => (JITMethodBody)null);
 		}
 
-		public FileOffset FileOffset {
-			get { return offset; }
-		}
+		public FileOffset FileOffset { get; set; }
 
-		public RVA RVA {
-			get { return rva; }
-		}
+		public RVA RVA { get; set; }
 
 		public void SetOffset(FileOffset offset, RVA rva) {
-			this.offset = offset;
-			this.rva = rva;
+			this.FileOffset = offset;
+			this.RVA = rva;
 		}
 
 		public uint GetFileLength() {

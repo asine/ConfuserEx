@@ -12,7 +12,7 @@ namespace Confuser.Protections.ReferenceProxy {
 		public abstract void ProcessCall(RPContext ctx, int instrIndex);
 		public abstract void Finalize(RPContext ctx);
 
-		private static ITypeDefOrRef Import(RPContext ctx, TypeDef typeDef) {
+		static ITypeDefOrRef Import(RPContext ctx, TypeDef typeDef) {
 			ITypeDefOrRef retTypeRef = new Importer(ctx.Module, ImporterOptions.TryToUseTypeDefs).Import(typeDef);
 			if (typeDef.Module != ctx.Module && ctx.Context.Modules.Contains((ModuleDefMD)typeDef.Module))
 				ctx.Name.AddReference(typeDef, new TypeRefReference((TypeRef)retTypeRef, typeDef));
@@ -38,7 +38,8 @@ namespace Confuser.Protections.ReferenceProxy {
 					retType = Import(ctx, declType).ToTypeSig();
 				}
 				return MethodSig.CreateStatic(retType, paramTypes);
-			} else {
+			}
+			else {
 				IEnumerable<TypeSig> paramTypes = method.MethodSig.Params.Select(type => {
 					if (ctx.TypeErasure && type.IsClassSig && method.MethodSig.HasThis)
 						return module.CorLibTypes.Object;
@@ -80,7 +81,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			ctx.Module.Types.Add(ret);
 
 			foreach (IDnlibDef def in ret.FindDefinitions()) {
-				ctx.Marker.Mark(def);
+				ctx.Marker.Mark(def, ctx.Protection);
 				ctx.Name.SetCanRename(def, false);
 			}
 

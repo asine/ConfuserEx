@@ -9,7 +9,7 @@ namespace Confuser.Core {
 	///     Provides a set of utility methods
 	/// </summary>
 	public static class Utils {
-		private static readonly char[] hexCharset = "0123456789abcdef".ToCharArray();
+		static readonly char[] hexCharset = "0123456789abcdef".ToCharArray();
 
 		/// <summary>
 		///     Gets the value associated with the specified key, or default value if the key does not exists.
@@ -58,7 +58,7 @@ namespace Confuser.Core {
 		/// <param name="key">The key of the element to add.</param>
 		/// <param name="value">The value of the element to add.</param>
 		/// <exception cref="System.ArgumentNullException">key is <c>null</c>.</exception>
-		public static void AddListEntry<TKey, TValue>(this Dictionary<TKey, List<TValue>> self, TKey key, TValue value) {
+		public static void AddListEntry<TKey, TValue>(this IDictionary<TKey, List<TValue>> self, TKey key, TValue value) {
 			if (key == null)
 				throw new ArgumentNullException("key");
 			List<TValue> list;
@@ -148,7 +148,40 @@ namespace Confuser.Core {
 					current /= charset.Length;
 				}
 			}
+			if (current != 0)
+				ret.Append(charset[current % charset.Length]);
 			return ret.ToString();
+		}
+
+		/// <summary>
+		///     Returns a new string in which all occurrences of a specified string in
+		///     <paramref name="str" /><paramref name="str" /> are replaced with another specified string.
+		/// </summary>
+		/// <returns>
+		///     A <see cref="string" /> equivalent to <paramref name="str" /> but with all instances of
+		///     <paramref name="oldValue" />
+		///     replaced with <paramref name="newValue" />.
+		/// </returns>
+		/// <param name="str">A string to do the replace in. </param>
+		/// <param name="oldValue">A string to be replaced. </param>
+		/// <param name="newValue">A string to replace all occurrences of <paramref name="oldValue" />. </param>
+		/// <param name="comparison">One of the <see cref="StringComparison" /> values. </param>
+		/// <remarks>Adopted from http://stackoverflow.com/a/244933 </remarks>
+		public static string Replace(this string str, string oldValue, string newValue, StringComparison comparison) {
+			StringBuilder sb = new StringBuilder();
+
+			int previousIndex = 0;
+			int index = str.IndexOf(oldValue, comparison);
+			while (index != -1) {
+				sb.Append(str.Substring(previousIndex, index - previousIndex));
+				sb.Append(newValue);
+				index += oldValue.Length;
+				previousIndex = index;
+				index = str.IndexOf(oldValue, index, comparison);
+			}
+			sb.Append(str.Substring(previousIndex));
+
+			return sb.ToString();
 		}
 
 

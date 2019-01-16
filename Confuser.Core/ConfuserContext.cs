@@ -10,8 +10,8 @@ namespace Confuser.Core {
 	///     Context providing information on the current protection process.
 	/// </summary>
 	public class ConfuserContext {
-		private readonly Annotations annotations = new Annotations();
-		private readonly ServiceRegistry registry = new ServiceRegistry();
+		readonly Annotations annotations = new Annotations();
+		readonly ServiceRegistry registry = new ServiceRegistry();
 		internal CancellationToken token;
 
 		/// <summary>
@@ -55,6 +55,12 @@ namespace Confuser.Core {
 		/// </summary>
 		/// <value>The modules being protected.</value>
 		public IList<ModuleDefMD> Modules { get; internal set; }
+
+		/// <summary>
+		///     Gets the external modules.
+		/// </summary>
+		/// <value>The external modules.</value>
+		public IList<byte[]> ExternalModules { get; internal set; }
 
 		/// <summary>
 		///     Gets the base directory.
@@ -137,6 +143,11 @@ namespace Confuser.Core {
 		public byte[] CurrentModuleSymbol { get; internal set; }
 
 		/// <summary>
+		///		Gets the token used to indicate cancellation
+		/// </summary>
+		public CancellationToken CancellationToken { get { return token; } }
+
+		/// <summary>
 		///     Throws a System.OperationCanceledException if protection process has been canceled.
 		/// </summary>
 		/// <exception cref="OperationCanceledException">
@@ -149,9 +160,6 @@ namespace Confuser.Core {
 		/// <summary>
 		///     Requests the current module to be written as mix-mode module, and return the native writer options.
 		/// </summary>
-		/// <remarks>
-		///     DO NOT USE AT THE MOMENT! Somehow dnlib seems to handle it strangely...
-		/// </remarks>
 		/// <returns>The native writer options.</returns>
 		public NativeModuleWriterOptions RequestNative() {
 			if (CurrentModule == null)

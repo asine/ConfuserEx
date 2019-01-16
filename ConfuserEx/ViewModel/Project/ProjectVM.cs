@@ -7,12 +7,13 @@ using Confuser.Core.Project;
 
 namespace ConfuserEx.ViewModel {
 	public class ProjectVM : ViewModelBase, IViewModel<ConfuserProject>, IRuleContainer {
-		private readonly ConfuserProject proj;
-		private bool modified;
-		private ProjectSettingVM<Packer> packer;
+		readonly ConfuserProject proj;
+		bool modified;
+		ProjectSettingVM<Packer> packer;
 
-		public ProjectVM(ConfuserProject proj) {
+		public ProjectVM(ConfuserProject proj, string fileName) {
 			this.proj = proj;
+			FileName = fileName;
 
 			ObservableCollection<ProjectModuleVM> modules = Utils.Wrap(proj, module => new ProjectModuleVM(this, module));
 			modules.CollectionChanged += (sender, e) => IsModified = true;
@@ -87,6 +88,8 @@ namespace ConfuserEx.ViewModel {
 		public ObservableCollection<ConfuserComponent> Protections { get; private set; }
 		public ObservableCollection<ConfuserComponent> Packers { get; private set; }
 		public IList<ProjectRuleVM> Rules { get; private set; }
+
+		public string FileName { get; set; }
 
 		ConfuserProject IViewModel<ConfuserProject>.Model {
 			get { return proj; }

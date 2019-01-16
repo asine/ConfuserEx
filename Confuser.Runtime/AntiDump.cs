@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 namespace Confuser.Runtime {
 	internal static class AntiDump {
 		[DllImport("kernel32.dll")]
-		private static extern unsafe bool VirtualProtect(byte* lpAddress, int dwSize, uint flNewProtect, out uint lpflOldProtect);
+		static extern unsafe bool VirtualProtect(byte* lpAddress, int dwSize, uint flNewProtect, out uint lpflOldProtect);
 
-		private static unsafe void Initialize() {
+		static unsafe void Initialize() {
 			uint old;
-			Module module = typeof (AntiDump).Module;
+			Module module = typeof(AntiDump).Module;
 			var bas = (byte*)Marshal.GetHINSTANCE(module);
 			byte* ptr = bas + 0x3c;
 			byte* ptr2;
@@ -70,7 +70,7 @@ namespace Confuser.Runtime {
 				*(uint*)mdHdr = 0;
 				mdHdr += 12;
 				mdHdr += *(uint*)mdHdr;
-				mdHdr = (byte*)(((uint)mdHdr + 7) & ~3);
+				mdHdr = (byte*)(((ulong)mdHdr + 7) & ~3UL);
 				mdHdr += 2;
 				ushort numOfStream = *mdHdr;
 				mdHdr += 2;
@@ -104,7 +104,8 @@ namespace Confuser.Runtime {
 						mdHdr++;
 					}
 				}
-			} else //Flat
+			}
+			else //Flat
 			{
 				//VirtualProtect(ptr - 16, 8, 0x40, out old);
 				//*(uint*)(ptr - 12) = 0;
@@ -197,7 +198,7 @@ namespace Confuser.Runtime {
 				*(uint*)mdHdrPtr = 0;
 				mdHdrPtr += 12;
 				mdHdrPtr += *(uint*)mdHdrPtr;
-				mdHdrPtr = (byte*)(((uint)mdHdrPtr + 7) & ~3);
+				mdHdrPtr = (byte*)(((ulong)mdHdrPtr + 7) & ~3UL);
 				mdHdrPtr += 2;
 				ushort numOfStream = *mdHdrPtr;
 				mdHdrPtr += 2;

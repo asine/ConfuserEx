@@ -3,8 +3,8 @@ using Confuser.Core.Project;
 
 namespace ConfuserEx.ViewModel {
 	public class ProjectSettingVM<T> : ViewModelBase, IViewModel<SettingItem<T>> {
-		private readonly ProjectVM parent;
-		private readonly SettingItem<T> setting;
+		readonly ProjectVM parent;
+		readonly SettingItem<T> setting;
 
 		public ProjectSettingVM(ProjectVM parent, SettingItem<T> setting) {
 			this.parent = parent;

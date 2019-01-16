@@ -5,16 +5,16 @@ using dnlib.DotNet;
 
 namespace Confuser.Core.Services {
 	internal class RuntimeService : IRuntimeService {
-		private ModuleDef rtModule;
+		ModuleDef rtModule;
 
 		/// <inheritdoc />
 		public TypeDef GetRuntimeType(string fullName) {
 			if (rtModule == null) {
-				Module module = typeof (RuntimeService).Assembly.ManifestModule;
+				Module module = typeof(RuntimeService).Assembly.ManifestModule;
 				string rtPath = "Confuser.Runtime.dll";
 				if (module.FullyQualifiedName[0] != '<')
 					rtPath = Path.Combine(Path.GetDirectoryName(module.FullyQualifiedName), rtPath);
-				rtModule = ModuleDefMD.Load(rtPath);
+				rtModule = ModuleDefMD.Load(rtPath, new ModuleCreationOptions() { TryToLoadPdbFromDisk = true });
 				rtModule.EnableTypeDefFindCache = true;
 			}
 			return rtModule.Find(fullName, true);

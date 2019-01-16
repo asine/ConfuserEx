@@ -10,7 +10,7 @@ namespace Confuser.DynCipher.AST {
 		And,
 		Xor,
 		Lsh,
-		Rsh,
+		Rsh
 	}
 
 	public class BinOpExpression : Expression {

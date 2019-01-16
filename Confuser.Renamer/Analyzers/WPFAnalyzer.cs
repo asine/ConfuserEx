@@ -14,12 +14,16 @@ using dnlib.IO;
 
 namespace Confuser.Renamer.Analyzers {
 	internal class WPFAnalyzer : IRenamer {
-		private static readonly object BAMLKey = new object();
+		static readonly object BAMLKey = new object();
 
-		private static readonly Regex ResourceNamePattern = new Regex("^.*\\.g\\.resources$");
-		private BAMLAnalyzer analyzer;
+		static readonly Regex ResourceNamePattern = new Regex("^.*\\.g\\.resources$");
+		internal static readonly Regex UriPattern = new Regex("(?:;COMPONENT|APPLICATION\\:,,,)(/.+\\.[BX]AML)$");
+		BAMLAnalyzer analyzer;
 
-		public void Analyze(ConfuserContext context, INameService service, IDnlibDef def) {
+		internal Dictionary<string, List<IBAMLReference>> bamlRefs = new Dictionary<string, List<IBAMLReference>>(StringComparer.OrdinalIgnoreCase);
+		public event Action<BAMLAnalyzer, BamlElement> AnalyzeBAMLElement;
+
+		public void Analyze(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
 			var method = def as MethodDef;
 			if (method != null) {
 				if (!method.HasBody)
@@ -33,11 +37,69 @@ namespace Confuser.Renamer.Analyzers {
 			}
 		}
 
-		public void PreRename(ConfuserContext context, INameService service, IDnlibDef def) {
-			//
+		public void PreRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
+			var module = def as ModuleDefMD;
+			if (module == null || !parameters.GetParameter<bool>(context, def, "renXaml", true))
+				return;
+
+			var wpfResInfo = context.Annotations.Get<Dictionary<string, Dictionary<string, BamlDocument>>>(module, BAMLKey);
+			if (wpfResInfo == null)
+				return;
+
+			foreach (var res in wpfResInfo.Values)
+				foreach (var doc in res.Values) {
+					List<IBAMLReference> references;
+					if (bamlRefs.TryGetValue(doc.DocumentName, out references)) {
+						var newName = doc.DocumentName.ToUpperInvariant();
+
+						#region old code
+
+						//if (newName.EndsWith(".BAML"))
+						//    newName = service.RandomName(RenameMode.Letters).ToLowerInvariant() + ".baml";
+						//else if (newName.EndsWith(".XAML"))
+						//    newName = service.RandomName(RenameMode.Letters).ToLowerInvariant() + ".xaml";
+
+						#endregion
+
+						#region Niks patch fix
+
+						/*
+                         * Nik's patch for maintaining relative paths. If the xaml file is referenced in this manner
+                         * "/some.namespace;component/somefolder/somecontrol.xaml"
+                         * then we want to keep the relative path and namespace intact. We should be obfuscating it like this - /some.namespace;component/somefolder/asjdjh2398498dswk.xaml
+                        * */
+
+						string[] completePath = newName.Split(new string[] { "/" }, StringSplitOptions.RemoveEmptyEntries);
+						string newShinyName = string.Empty;
+						for (int i = 0; i <= completePath.Length - 2; i++) {
+							newShinyName += completePath[i].ToLowerInvariant() + "/";
+						}
+						if (newName.EndsWith(".BAML"))
+							newName = newShinyName + service.RandomName(RenameMode.Letters).ToLowerInvariant() + ".baml";
+						else if (newName.EndsWith(".XAML"))
+							newName = newShinyName + service.RandomName(RenameMode.Letters).ToLowerInvariant() + ".xaml";
+
+						context.Logger.Debug(String.Format("Preserving virtual paths. Replaced {0} with {1}", doc.DocumentName, newName));
+
+						#endregion
+
+						bool renameOk = true;
+						foreach (var bamlRef in references)
+							if (!bamlRef.CanRename(doc.DocumentName, newName)) {
+								renameOk = false;
+								break;
+							}
+
+						if (renameOk) {
+							foreach (var bamlRef in references)
+								bamlRef.Rename(doc.DocumentName, newName);
+							doc.DocumentName = newName;
+						}
+					}
+				}
 		}
 
-		public void PostRename(ConfuserContext context, INameService service, IDnlibDef def) {
+		public void PostRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
 			var module = def as ModuleDefMD;
 			if (module == null)
 				return;
@@ -72,6 +134,7 @@ namespace Confuser.Renamer.Analyzers {
 						docStream.Position = 0;
 						docStream.Write(BitConverter.GetBytes((int)docStream.Length - 4), 0, 4);
 						data = docStream.ToArray();
+						name = document.DocumentName;
 					}
 
 					writer.AddResourceData(name, typeName, data);
@@ -81,19 +144,47 @@ namespace Confuser.Renamer.Analyzers {
 			}
 		}
 
-		private void AnalyzeMethod(ConfuserContext context, INameService service, MethodDef method) {
+		void AnalyzeMethod(ConfuserContext context, INameService service, MethodDef method) {
 			var dpRegInstrs = new List<Tuple<bool, Instruction>>();
 			var routedEvtRegInstrs = new List<Instruction>();
-			foreach (Instruction instr in method.Body.Instructions) {
+			for (int i = 0; i < method.Body.Instructions.Count; i++) {
+				Instruction instr = method.Body.Instructions[i];
 				if ((instr.OpCode.Code == Code.Call || instr.OpCode.Code == Code.Callvirt)) {
 					var regMethod = (IMethod)instr.Operand;
 
 					if (regMethod.DeclaringType.FullName == "System.Windows.DependencyProperty" &&
 					    regMethod.Name.String.StartsWith("Register")) {
 						dpRegInstrs.Add(Tuple.Create(regMethod.Name.String.StartsWith("RegisterAttached"), instr));
-					} else if (regMethod.DeclaringType.FullName == "System.Windows.EventManager" &&
-					           regMethod.Name.String == "RegisterRoutedEvent") {
+					}
+					else if (regMethod.DeclaringType.FullName == "System.Windows.EventManager" &&
+					         regMethod.Name.String == "RegisterRoutedEvent") {
 						routedEvtRegInstrs.Add(instr);
+					}
+				}
+				else if (instr.OpCode.Code == Code.Newobj) {
+					var methodRef = (IMethod)instr.Operand;
+
+					if (methodRef.DeclaringType.FullName == "System.Windows.Data.PropertyGroupDescription" &&
+					    methodRef.Name == ".ctor" && i - 1 >= 0 && method.Body.Instructions[i - 1].OpCode.Code == Code.Ldstr) {
+						foreach (var property in analyzer.LookupProperty((string)method.Body.Instructions[i - 1].Operand))
+							service.SetCanRename(property, false);
+					}
+				}
+				else if (instr.OpCode == OpCodes.Ldstr) {
+					var operand = ((string)instr.Operand).ToUpperInvariant();
+					if (operand.EndsWith(".BAML") || operand.EndsWith(".XAML")) {
+						var match = UriPattern.Match(operand);
+						if (match.Success)
+							operand = match.Groups[1].Value;
+						else if (operand.Contains("/"))
+							context.Logger.WarnFormat("Fail to extract XAML name from '{0}'.", instr.Operand);
+
+						var reference = new BAMLStringReference(instr);
+						operand = operand.TrimStart('/');
+						var baml = operand.Substring(0, operand.Length - 5) + ".BAML";
+						var xaml = operand.Substring(0, operand.Length - 5) + ".XAML";
+						bamlRefs.AddListEntry(baml, reference);
+						bamlRefs.AddListEntry(xaml, reference);
 					}
 				}
 			}
@@ -141,6 +232,8 @@ namespace Confuser.Renamer.Analyzers {
 				// Find CLR property for attached DP as well, because it seems attached DP can be use as normal DP as well.
 				PropertyDef property = null;
 				if ((property = declType.FindProperty(name)) != null) {
+					service.SetCanRename(property, false);
+
 					found = true;
 					if (property.GetMethod != null)
 						service.SetCanRename(property.GetMethod, false);
@@ -189,6 +282,8 @@ namespace Confuser.Renamer.Analyzers {
 					                          name, declType.FullName);
 					continue;
 				}
+				service.SetCanRename(eventDef, false);
+
 				if (eventDef.AddMethod != null)
 					service.SetCanRename(eventDef.AddMethod, false);
 
@@ -205,9 +300,11 @@ namespace Confuser.Renamer.Analyzers {
 			}
 		}
 
-		private void AnalyzeResources(ConfuserContext context, INameService service, ModuleDefMD module) {
-			if (analyzer == null)
+		void AnalyzeResources(ConfuserContext context, INameService service, ModuleDefMD module) {
+			if (analyzer == null) {
 				analyzer = new BAMLAnalyzer(context, service);
+				analyzer.AnalyzeElement += AnalyzeBAMLElement;
+			}
 
 			var wpfResInfo = new Dictionary<string, Dictionary<string, BamlDocument>>();
 
@@ -230,6 +327,7 @@ namespace Confuser.Renamer.Analyzers {
 					byte[] data;
 					reader.GetResourceData(name, out typeName, out data);
 					BamlDocument document = analyzer.Analyze(module, name, data);
+					document.DocumentName = name;
 					resInfo.Add(name, document);
 				}
 

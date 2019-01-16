@@ -10,7 +10,7 @@ using dnlib.DotNet.MD;
 
 namespace Confuser.Renamer.Analyzers {
 	internal class TypeBlobAnalyzer : IRenamer {
-		public void Analyze(ConfuserContext context, INameService service, IDnlibDef def) {
+		public void Analyze(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
 			var module = def as ModuleDefMD;
 			if (module == null) return;
 
@@ -20,8 +20,7 @@ namespace Confuser.Renamer.Analyzers {
 			// MemberRef
 			table = module.TablesStream.Get(Table.Method);
 			len = table.Rows;
-			IEnumerable<MethodDef> methods = Enumerable.Range(1, (int)len)
-			                                           .Select(rid => module.ResolveMethod((uint)rid));
+			IEnumerable<MethodDef> methods = module.GetTypes().SelectMany(type => type.Methods);
 			foreach (MethodDef method in methods) {
 				foreach (MethodOverride methodImpl in method.Overrides) {
 					if (methodImpl.MethodBody is MemberRef)
@@ -84,15 +83,15 @@ namespace Confuser.Renamer.Analyzers {
 			}
 		}
 
-		public void PreRename(ConfuserContext context, INameService service, IDnlibDef def) {
+		public void PreRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
 			//
 		}
 
-		public void PostRename(ConfuserContext context, INameService service, IDnlibDef def) {
+		public void PostRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
 			//
 		}
 
-		private void AnalyzeCAArgument(ConfuserContext context, INameService service, CAArgument arg) {
+		void AnalyzeCAArgument(ConfuserContext context, INameService service, CAArgument arg) {
 			if (arg.Type.DefinitionAssembly.IsCorLib() && arg.Type.FullName == "System.Type") {
 				var typeSig = (TypeSig)arg.Value;
 				foreach (ITypeDefOrRef typeRef in typeSig.FindTypeRefs()) {
@@ -103,16 +102,17 @@ namespace Confuser.Renamer.Analyzers {
 						service.ReduceRenameMode(typeDef, RenameMode.ASCII);
 					}
 				}
-			} else if (arg.Value is CAArgument[]) {
+			}
+			else if (arg.Value is CAArgument[]) {
 				foreach (CAArgument elem in (CAArgument[])arg.Value)
 					AnalyzeCAArgument(context, service, elem);
 			}
 		}
 
-		private void AnalyzeMemberRef(ConfuserContext context, INameService service, MemberRef memberRef) {
+		void AnalyzeMemberRef(ConfuserContext context, INameService service, MemberRef memberRef) {
 			ITypeDefOrRef declType = memberRef.DeclaringType;
 			var typeSpec = declType as TypeSpec;
-			if (typeSpec == null)
+			if (typeSpec == null || typeSpec.TypeSig.IsArray || typeSpec.TypeSig.IsSZArray)
 				return;
 
 			TypeSig sig = typeSpec.TypeSig;
@@ -120,12 +120,13 @@ namespace Confuser.Renamer.Analyzers {
 				sig = sig.Next;
 
 
-			Debug.Assert(sig is TypeDefOrRefSig || sig is GenericInstSig);
+			Debug.Assert(sig is TypeDefOrRefSig || sig is GenericInstSig || sig is GenericSig);
 			if (sig is GenericInstSig) {
 				var inst = (GenericInstSig)sig;
 				Debug.Assert(!(inst.GenericType.TypeDefOrRef is TypeSpec));
 				TypeDef openType = inst.GenericType.TypeDefOrRef.ResolveTypeDefThrow();
-				if (!context.Modules.Contains((ModuleDefMD)openType.Module))
+				if (!context.Modules.Contains((ModuleDefMD)openType.Module) ||
+				    memberRef.IsArrayAccessors())
 					return;
 
 				IDnlibDef member;

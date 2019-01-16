@@ -11,7 +11,7 @@ namespace Confuser.DynCipher.Elements {
 		public uint[,] Key { get; private set; }
 		public uint[,] InverseKey { get; private set; }
 
-		private static uint[,] GenerateUnimodularMatrix(RandomGenerator random) {
+		static uint[,] GenerateUnimodularMatrix(RandomGenerator random) {
 			Func<uint> next = () => (uint)random.NextInt32(4);
 
 			uint[,] l = {
@@ -30,7 +30,7 @@ namespace Confuser.DynCipher.Elements {
 			return mul(l, u);
 		}
 
-		private static uint[,] mul(uint[,] a, uint[,] b) {
+		static uint[,] mul(uint[,] a, uint[,] b) {
 			int n = a.GetLength(0), p = b.GetLength(1);
 			int m = a.GetLength(1);
 			if (b.GetLength(0) != m) return null;
@@ -45,7 +45,7 @@ namespace Confuser.DynCipher.Elements {
 			return ret;
 		}
 
-		private static uint cofactor4(uint[,] mat, int i, int j) {
+		static uint cofactor4(uint[,] mat, int i, int j) {
 			var sub = new uint[3, 3];
 			for (int ci = 0, si = 0; ci < 4; ci++, si++) {
 				if (ci == i) {
@@ -65,7 +65,7 @@ namespace Confuser.DynCipher.Elements {
 			return (uint)(-ret);
 		}
 
-		private static uint det3(uint[,] mat) {
+		static uint det3(uint[,] mat) {
 			return mat[0, 0] * mat[1, 1] * mat[2, 2] +
 			       mat[0, 1] * mat[1, 2] * mat[2, 0] +
 			       mat[0, 2] * mat[1, 0] * mat[2, 1] -
@@ -74,7 +74,7 @@ namespace Confuser.DynCipher.Elements {
 			       mat[0, 0] * mat[1, 2] * mat[2, 1];
 		}
 
-		private static uint[,] transpose4(uint[,] mat) {
+		static uint[,] transpose4(uint[,] mat) {
 			var ret = new uint[4, 4];
 			for (int i = 0; i < 4; i++)
 				for (int j = 0; j < 4; j++)
@@ -92,7 +92,7 @@ namespace Confuser.DynCipher.Elements {
 			Key = transpose4(cof);
 		}
 
-		private void EmitCore(CipherGenContext context, uint[,] k) {
+		void EmitCore(CipherGenContext context, uint[,] k) {
 			Expression a = context.GetDataExpression(DataIndexes[0]);
 			Expression b = context.GetDataExpression(DataIndexes[1]);
 			Expression c = context.GetDataExpression(DataIndexes[2]);

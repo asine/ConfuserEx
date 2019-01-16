@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using dnlib.IO;
 
 namespace Confuser.Core {
@@ -62,10 +63,11 @@ namespace Confuser.Core {
 		///     Determines whether the specified type is visible outside the containing assembly.
 		/// </summary>
 		/// <param name="typeDef">The type.</param>
+		/// <param name="exeNonPublic">Visibility of executable modules.</param>
 		/// <returns><c>true</c> if the specified type is visible outside the containing assembly; otherwise, <c>false</c>.</returns>
-		public static bool IsVisibleOutside(this TypeDef typeDef) {
+		public static bool IsVisibleOutside(this TypeDef typeDef, bool exeNonPublic = true) {
 			// Assume executable modules' type is not visible
-			if (typeDef.Module.Kind == ModuleKind.Windows || typeDef.Module.Kind == ModuleKind.Console)
+			if (exeNonPublic && (typeDef.Module.Kind == ModuleKind.Windows || typeDef.Module.Kind == ModuleKind.Console))
 				return false;
 
 			do {
@@ -101,6 +103,15 @@ namespace Confuser.Core {
 		}
 
 		/// <summary>
+		///     Determines whether the specified type is compiler generated.
+		/// </summary>
+		/// <param name="type">The type.</param>
+		/// <returns><c>true</c> if specified type is compiler generated; otherwise, <c>false</c>.</returns>
+		public static bool IsCompilerGenerated(this TypeDef type) {
+			return type.HasAttribute("System.Runtime.CompilerServices.CompilerGeneratedAttribute");
+		}
+
+		/// <summary>
 		///     Determines whether the specified type is a delegate.
 		/// </summary>
 		/// <param name="type">The type.</param>
@@ -133,6 +144,25 @@ namespace Confuser.Core {
 		}
 
 		/// <summary>
+		///     Determines whether the specified type is inherited from a base type.
+		/// </summary>
+		/// <param name="type">The type.</param>
+		/// <param name="baseType">The full name of base type.</param>
+		/// <returns><c>true</c> if the specified type is inherited from a base type; otherwise, <c>false</c>.</returns>
+		public static bool InheritsFrom(this TypeDef type, string baseType) {
+			if (type.BaseType == null)
+				return false;
+
+			TypeDef bas = type;
+			do {
+				bas = bas.BaseType.ResolveTypeDefThrow();
+				if (bas.ReflectionFullName == baseType)
+					return true;
+			} while (bas.BaseType != null);
+			return false;
+		}
+
+		/// <summary>
 		///     Determines whether the specified type implements the specified interface.
 		/// </summary>
 		/// <param name="type">The type.</param>
@@ -141,7 +171,7 @@ namespace Confuser.Core {
 		public static bool Implements(this TypeDef type, string fullName) {
 			do {
 				foreach (InterfaceImpl iface in type.Interfaces) {
-					if (iface.Interface.FullName == fullName)
+					if (iface.Interface.ReflectionFullName == fullName)
 						return true;
 				}
 
@@ -212,7 +242,7 @@ namespace Confuser.Core {
 			return ret;
 		}
 
-		private static void FindTypeRefsInternal(TypeSig typeSig, IList<ITypeDefOrRef> ret) {
+		static void FindTypeRefsInternal(TypeSig typeSig, IList<ITypeDefOrRef> ret) {
 			while (typeSig.Next != null) {
 				if (typeSig is ModifierSig)
 					ret.Add(((ModifierSig)typeSig).Modifier);
@@ -224,8 +254,14 @@ namespace Confuser.Core {
 				ret.Add(genInst.GenericType.TypeDefOrRef);
 				foreach (TypeSig genArg in genInst.GenericArguments)
 					FindTypeRefsInternal(genArg, ret);
-			} else if (typeSig is TypeDefOrRefSig)
-				ret.Add(((TypeDefOrRefSig)typeSig).TypeDefOrRef);
+			}
+			else if (typeSig is TypeDefOrRefSig) {
+				var type = ((TypeDefOrRefSig)typeSig).TypeDefOrRef;
+				while (type != null) {
+					ret.Add(type);
+					type = type.DeclaringType;
+				}
+			}
 		}
 
 		/// <summary>
@@ -292,6 +328,51 @@ namespace Confuser.Core {
 				return true;
 
 			return evt.OtherMethods.Any(method => method.IsStatic);
+		}
+
+		/// <summary>
+		///     Replaces the specified instruction reference with another instruction.
+		/// </summary>
+		/// <param name="body">The method body.</param>
+		/// <param name="target">The instruction to replace.</param>
+		/// <param name="newInstr">The new instruction.</param>
+		public static void ReplaceReference(this CilBody body, Instruction target, Instruction newInstr) {
+			foreach (ExceptionHandler eh in body.ExceptionHandlers) {
+				if (eh.TryStart == target)
+					eh.TryStart = newInstr;
+				if (eh.TryEnd == target)
+					eh.TryEnd = newInstr;
+				if (eh.HandlerStart == target)
+					eh.HandlerStart = newInstr;
+				if (eh.HandlerEnd == target)
+					eh.HandlerEnd = newInstr;
+			}
+			foreach (Instruction instr in body.Instructions) {
+				if (instr.Operand == target)
+					instr.Operand = newInstr;
+				else if (instr.Operand is Instruction[]) {
+					var targets = (Instruction[])instr.Operand;
+					for (int i = 0; i < targets.Length; i++)
+						if (targets[i] == target)
+							targets[i] = newInstr;
+				}
+			}
+		}
+
+		/// <summary>
+		///     Determines whether the specified method is array accessors.
+		/// </summary>
+		/// <param name="method">The method.</param>
+		/// <returns><c>true</c> if the specified method is array accessors; otherwise, <c>false</c>.</returns>
+		public static bool IsArrayAccessors(this IMethod method) {
+			var declType = method.DeclaringType.ToTypeSig();
+			if (declType is GenericInstSig)
+				declType = ((GenericInstSig)declType).GenericType;
+
+			if (declType.IsArray) {
+				return method.Name == "Get" || method.Name == "Set" || method.Name == "Address";
+			}
+			return false;
 		}
 	}
 

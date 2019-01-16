@@ -4,7 +4,7 @@ using Confuser.DynCipher.Generation;
 
 namespace Confuser.DynCipher {
 	public static class MathsUtils {
-		private const ulong MODULO32 = 0x100000000;
+		const ulong MODULO32 = 0x100000000;
 
 		public static ulong modInv(ulong num, ulong mod) {
 			ulong a = mod, b = num % mod;

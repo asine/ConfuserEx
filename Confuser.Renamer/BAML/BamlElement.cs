@@ -16,7 +16,7 @@ namespace Confuser.Renamer.BAML {
 		// Attribute this element will be assigned to.
 		public IDnlibDef Attribute { get; set; }
 
-		private static bool IsHeader(BamlRecord rec) {
+		static bool IsHeader(BamlRecord rec) {
 			switch (rec.Type) {
 				case BamlRecordType.ConstructorParametersStart:
 				case BamlRecordType.DocumentStart:
@@ -33,7 +33,7 @@ namespace Confuser.Renamer.BAML {
 			return false;
 		}
 
-		private static bool IsFooter(BamlRecord rec) {
+		static bool IsFooter(BamlRecord rec) {
 			switch (rec.Type) {
 				case BamlRecordType.ConstructorParametersEnd:
 				case BamlRecordType.DocumentEnd:
@@ -49,7 +49,7 @@ namespace Confuser.Renamer.BAML {
 			return false;
 		}
 
-		private static bool IsMatch(BamlRecord header, BamlRecord footer) {
+		static bool IsMatch(BamlRecord header, BamlRecord footer) {
 			switch (header.Type) {
 				case BamlRecordType.ConstructorParametersStart:
 					return footer.Type == BamlRecordType.ConstructorParametersEnd;
@@ -102,7 +102,8 @@ namespace Confuser.Renamer.BAML {
 						current.Parent = prev;
 						stack.Push(prev);
 					}
-				} else if (IsFooter(document[i])) {
+				}
+				else if (IsFooter(document[i])) {
 					if (current == null)
 						throw new Exception("Unexpected footer.");
 
@@ -114,7 +115,8 @@ namespace Confuser.Renamer.BAML {
 					current.Footer = document[i];
 					if (stack.Count > 0)
 						current = stack.Pop();
-				} else
+				}
+				else
 					current.Body.Add(document[i]);
 			}
 			Debug.Assert(stack.Count == 0);

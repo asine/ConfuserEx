@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Confuser.Core;
 using Confuser.Core.Helpers;
 using Confuser.DynCipher;
 using dnlib.DotNet;

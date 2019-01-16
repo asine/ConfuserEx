@@ -20,7 +20,7 @@ namespace Confuser.Core.Project.Patterns {
 
 		/// <inheritdoc />
 		public override object Evaluate(IDnlibDef definition) {
-			IMemberDef member = definition as IMemberDef;
+			var member = definition as IMemberDef;
 			if (member == null)
 				return false;
 
@@ -33,14 +33,16 @@ namespace Confuser.Core.Project.Patterns {
 
 			if (member is MethodDef)
 				return ((MethodDef)member).IsPublic;
-			else if (member is FieldDef)
+			if (member is FieldDef)
 				return ((FieldDef)member).IsPublic;
-			else if (member is PropertyDef)
+			if (member is PropertyDef)
 				return ((PropertyDef)member).IsPublic();
-			else if (member is EventDef)
+			if (member is EventDef)
 				return ((EventDef)member).IsPublic();
-			else
-				throw new NotSupportedException();
+			if (member is TypeDef)
+				return ((TypeDef)member).IsPublic || ((TypeDef)member).IsNestedPublic;
+
+			throw new NotSupportedException();
 		}
 	}
 }

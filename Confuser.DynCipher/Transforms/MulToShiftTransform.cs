@@ -5,13 +5,13 @@ using Confuser.DynCipher.AST;
 
 namespace Confuser.DynCipher.Transforms {
 	internal class MulToShiftTransform {
-		private static uint NumberOfSetBits(uint i) {
+		static uint NumberOfSetBits(uint i) {
 			i = i - ((i >> 1) & 0x55555555);
 			i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
 			return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
 		}
 
-		private static Expression ProcessExpression(Expression exp) {
+		static Expression ProcessExpression(Expression exp) {
 			if (exp is BinOpExpression) {
 				var binOp = (BinOpExpression)exp;
 				if (binOp.Operation == BinOps.Mul && binOp.Right is LiteralExpression) {
@@ -39,19 +39,22 @@ namespace Confuser.DynCipher.Transforms {
 							x += i;
 						return x;
 					}
-				} else {
+				}
+				else {
 					binOp.Left = ProcessExpression(binOp.Left);
 					binOp.Right = ProcessExpression(binOp.Right);
 				}
-			} else if (exp is ArrayIndexExpression) {
+			}
+			else if (exp is ArrayIndexExpression) {
 				((ArrayIndexExpression)exp).Array = ProcessExpression(((ArrayIndexExpression)exp).Array);
-			} else if (exp is UnaryOpExpression) {
+			}
+			else if (exp is UnaryOpExpression) {
 				((UnaryOpExpression)exp).Value = ProcessExpression(((UnaryOpExpression)exp).Value);
 			}
 			return exp;
 		}
 
-		private static void ProcessStatement(Statement st) {
+		static void ProcessStatement(Statement st) {
 			if (st is AssignmentStatement) {
 				var assign = (AssignmentStatement)st;
 				assign.Target = ProcessExpression(assign.Target);

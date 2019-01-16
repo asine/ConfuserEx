@@ -11,9 +11,9 @@ using GalaSoft.MvvmLight.Command;
 
 namespace ConfuserEx.ViewModel {
 	internal class SettingsTabVM : TabViewModel {
-		private bool hasPacker;
-		private IRuleContainer selectedList;
-		private int selectedRuleIndex;
+		bool hasPacker;
+		IRuleContainer selectedList;
+		int selectedRuleIndex;
 
 		public SettingsTabVM(AppVM app)
 			: base(app, "Settings") {
@@ -83,7 +83,7 @@ namespace ConfuserEx.ViewModel {
 			}
 		}
 
-		private void InitProject() {
+		void InitProject() {
 			ModulesView = new CompositeCollection {
 				App.Project,
 				new CollectionContainer { Collection = App.Project.Modules }
@@ -94,9 +94,9 @@ namespace ConfuserEx.ViewModel {
 
 		protected override void OnPropertyChanged(string property) {
 			if (property == "HasPacker") {
-				if (hasPacker)
+				if (hasPacker && App.Project.Packer == null)
 					App.Project.Packer = new ProjectSettingVM<Packer>(App.Project, new SettingItem<Packer> { Id = App.Project.Packers[0].Id });
-				else
+				else if (!hasPacker)
 					App.Project.Packer = null;
 			}
 			base.OnPropertyChanged(property);

@@ -9,7 +9,7 @@ namespace Confuser.Renamer.BAML {
 			: base(stream) { }
 
 		public int ReadEncodedInt() {
-			return base.Read7BitEncodedInt();
+			return Read7BitEncodedInt();
 		}
 	}
 
@@ -18,7 +18,7 @@ namespace Confuser.Renamer.BAML {
 			: base(stream) { }
 
 		public void WriteEncodedInt(int val) {
-			base.Write7BitEncodedInt(val);
+			Write7BitEncodedInt(val);
 		}
 	}
 
@@ -191,11 +191,13 @@ namespace Confuser.Renamer.BAML {
 					case BamlRecordType.TypeInfo:
 						rec = new TypeInfoRecord();
 						break;
+					case BamlRecordType.TypeSerializerInfo:
+						rec = new TypeSerializerInfoRecord();
+						break;
 					case BamlRecordType.XmlnsProperty:
 						rec = new XmlnsPropertyRecord();
 						break;
 					case BamlRecordType.XmlAttribute:
-					case BamlRecordType.TypeSerializerInfo:
 					case BamlRecordType.ProcessingInstruction:
 					case BamlRecordType.LastRecordType:
 					case BamlRecordType.EndAttributes:

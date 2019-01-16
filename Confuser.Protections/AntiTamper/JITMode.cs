@@ -14,28 +14,28 @@ using dnlib.DotNet.Writer;
 
 namespace Confuser.Protections.AntiTamper {
 	internal class JITMode : IModeHandler {
-		private static readonly CilBody NopBody = new CilBody {
+		static readonly CilBody NopBody = new CilBody {
 			Instructions = {
 				Instruction.Create(OpCodes.Ldnull),
 				Instruction.Create(OpCodes.Throw)
 			}
 		};
 
-		private uint c;
-		private MethodDef cctor;
-		private MethodDef cctorRepl;
-		private ConfuserContext context;
-		private IKeyDeriver deriver;
-		private byte[] fieldLayout;
+		uint c;
+		MethodDef cctor;
+		MethodDef cctorRepl;
+		ConfuserContext context;
+		IKeyDeriver deriver;
+		byte[] fieldLayout;
 
-		private MethodDef initMethod;
-		private uint key;
-		private List<MethodDef> methods;
-		private uint name1, name2;
-		private RandomGenerator random;
-		private uint v;
-		private uint x;
-		private uint z;
+		MethodDef initMethod;
+		uint key;
+		List<MethodDef> methods;
+		uint name1, name2;
+		RandomGenerator random;
+		uint v;
+		uint x;
+		uint z;
 
 		public void HandleInject(AntiTamperProtection parent, ConfuserContext context, ProtectionParameters parameters) {
 			this.context = context;
@@ -79,7 +79,8 @@ namespace Confuser.Protections.AntiTamper {
 				Instruction instr = instrs[i];
 				if (instr.OpCode == OpCodes.Ldtoken) {
 					instr.Operand = context.CurrentModule.GlobalType;
-				} else if (instr.OpCode == OpCodes.Call) {
+				}
+				else if (instr.OpCode == OpCodes.Call) {
 					var method = (IMethod)instr.Operand;
 					if (method.DeclaringType.Name == "Mutation" &&
 					    method.Name == "Crypt") {
@@ -112,7 +113,7 @@ namespace Confuser.Protections.AntiTamper {
 			cctorRepl.Body = new CilBody();
 			cctorRepl.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 			context.CurrentModule.GlobalType.Methods.Add(cctorRepl);
-			name.MarkHelper(cctorRepl, marker);
+			name.MarkHelper(cctorRepl, marker, parent);
 
 			MutationHelper.InjectKeys(defs.OfType<MethodDef>().Single(method => method.Name == "HookHandler"),
 			                          new[] { 0 }, new[] { (int)key });
@@ -130,7 +131,7 @@ namespace Confuser.Protections.AntiTamper {
 					foreach (FieldDef f in fields)
 						dataType.Fields.Add(f);
 				}
-				name.MarkHelper(def, marker);
+				name.MarkHelper(def, marker, parent);
 				if (def is MethodDef)
 					parent.ExcludeMethod(context, (MethodDef)def);
 			}
@@ -138,22 +139,30 @@ namespace Confuser.Protections.AntiTamper {
 		}
 
 		public void HandleMD(AntiTamperProtection parent, ConfuserContext context, ProtectionParameters parameters) {
+			// move initialization away from module initializer
+			cctorRepl.Body = cctor.Body;
+			cctor.Body = new CilBody();
+			cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, initMethod));
+			cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, cctorRepl));
+			cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
 			methods = parameters.Targets.OfType<MethodDef>().Where(method => method.HasBody).ToList();
 			context.CurrentModuleWriterListener.OnWriterEvent += OnWriterEvent;
 		}
 
-		private void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
-			var writer = (ModuleWriter)sender;
+		void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
+			var writer = (ModuleWriterBase)sender;
 			if (e.WriterEvent == ModuleWriterEvent.MDBeginWriteMethodBodies) {
 				context.Logger.Debug("Extracting method bodies...");
 				CreateSection(writer);
-			} else if (e.WriterEvent == ModuleWriterEvent.BeginStrongNameSign) {
+			}
+			else if (e.WriterEvent == ModuleWriterEvent.BeginStrongNameSign) {
 				context.Logger.Debug("Encrypting method section...");
 				EncryptSection(writer);
 			}
 		}
 
-		private void CreateSection(ModuleWriter writer) {
+		void CreateSection(ModuleWriterBase writer) {
 			// move some PE parts to separate section to prevent it from being hashed
 			var peSection = new PESection("", 0x60000020);
 			bool moved = false;
@@ -163,15 +172,18 @@ namespace Confuser.Protections.AntiTamper {
 				peSection.Add(writer.StrongNameSignature, alignment);
 				moved = true;
 			}
-			if (writer.ImportAddressTable != null) {
-				alignment = writer.TextSection.Remove(writer.ImportAddressTable).Value;
-				peSection.Add(writer.ImportAddressTable, alignment);
-				moved = true;
-			}
-			if (writer.StartupStub != null) {
-				alignment = writer.TextSection.Remove(writer.StartupStub).Value;
-				peSection.Add(writer.StartupStub, alignment);
-				moved = true;
+			var managedWriter = writer as ModuleWriter;
+			if (managedWriter != null) {
+				if (managedWriter.ImportAddressTable != null) {
+					alignment = writer.TextSection.Remove(managedWriter.ImportAddressTable).Value;
+					peSection.Add(managedWriter.ImportAddressTable, alignment);
+					moved = true;
+				}
+				if (managedWriter.StartupStub != null) {
+					alignment = writer.TextSection.Remove(managedWriter.StartupStub).Value;
+					peSection.Add(managedWriter.StartupStub, alignment);
+					moved = true;
+				}
 			}
 			if (moved)
 				writer.Sections.Add(peSection);
@@ -196,13 +208,6 @@ namespace Confuser.Protections.AntiTamper {
 			var bodyIndex = new JITBodyIndex(methods.Select(method => writer.MetaData.GetToken(method).Raw));
 			newSection.Add(bodyIndex, 0x10);
 
-			// move initialization away from module initializer
-			cctorRepl.Body = cctor.Body;
-			cctor.Body = new CilBody();
-			cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, initMethod));
-			cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, cctorRepl));
-			cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
 			// save methods
 			foreach (MethodDef method in methods.WithProgress(context.Logger)) {
 				if (!method.HasBody)
@@ -226,7 +231,7 @@ namespace Confuser.Protections.AntiTamper {
 			newSection.Add(new ByteArrayChunk(new byte[4]), 4);
 		}
 
-		private void EncryptSection(ModuleWriter writer) {
+		void EncryptSection(ModuleWriterBase writer) {
 			Stream stream = writer.DestinationStream;
 			var reader = new BinaryReader(writer.DestinationStream);
 			stream.Position = 0x3C;
@@ -239,17 +244,30 @@ namespace Confuser.Protections.AntiTamper {
 			stream.Position += 2 + optSize;
 
 			uint encLoc = 0, encSize = 0;
+			int origSects = -1;
+			if (writer is NativeModuleWriter && writer.Module is ModuleDefMD)
+				origSects = ((ModuleDefMD)writer.Module).MetaData.PEImage.ImageSectionHeaders.Count;
 			for (int i = 0; i < sections; i++) {
-				uint nameHash = reader.ReadUInt32() * reader.ReadUInt32();
+				uint nameHash;
+				if (origSects > 0) {
+					origSects--;
+					stream.Write(new byte[8], 0, 8);
+					nameHash = 0;
+				}
+				else
+					nameHash = reader.ReadUInt32() * reader.ReadUInt32();
 				stream.Position += 8;
 				if (nameHash == name1 * name2) {
 					encSize = reader.ReadUInt32();
 					encLoc = reader.ReadUInt32();
-				} else if (nameHash != 0) {
+				}
+				else if (nameHash != 0) {
 					uint sectSize = reader.ReadUInt32();
 					uint sectLoc = reader.ReadUInt32();
 					Hash(stream, reader, sectLoc, sectSize);
 				}
+				else
+					stream.Position += 8;
 				stream.Position += 16;
 			}
 
@@ -268,7 +286,7 @@ namespace Confuser.Protections.AntiTamper {
 			stream.Write(byteResult, 0, byteResult.Length);
 		}
 
-		private void Hash(Stream stream, BinaryReader reader, uint offset, uint size) {
+		void Hash(Stream stream, BinaryReader reader, uint offset, uint size) {
 			long original = stream.Position;
 			stream.Position = offset;
 			size >>= 2;
@@ -283,7 +301,7 @@ namespace Confuser.Protections.AntiTamper {
 			stream.Position = original;
 		}
 
-		private uint[] DeriveKey() {
+		uint[] DeriveKey() {
 			uint[] dst = new uint[0x10], src = new uint[0x10];
 			for (int i = 0; i < 0x10; i++) {
 				dst[i] = v;

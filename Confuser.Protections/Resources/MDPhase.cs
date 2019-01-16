@@ -12,8 +12,8 @@ using dnlib.DotNet.Writer;
 
 namespace Confuser.Protections.Resources {
 	internal class MDPhase {
-		private readonly REContext ctx;
-		private ByteArrayChunk encryptedResource;
+		readonly REContext ctx;
+		ByteArrayChunk encryptedResource;
 
 		public MDPhase(REContext ctx) {
 			this.ctx = ctx;
@@ -23,33 +23,37 @@ namespace Confuser.Protections.Resources {
 			ctx.Context.CurrentModuleWriterListener.OnWriterEvent += OnWriterEvent;
 		}
 
-		private void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
-			var writer = (ModuleWriter)sender;
+		void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
+			var writer = (ModuleWriterBase)sender;
 			if (e.WriterEvent == ModuleWriterEvent.MDBeginAddResources) {
 				ctx.Context.CheckCancellation();
 				ctx.Context.Logger.Debug("Encrypting resources...");
+				bool hasPacker = ctx.Context.Packer != null;
 
 				List<EmbeddedResource> resources = ctx.Module.Resources.OfType<EmbeddedResource>().ToList();
-				ctx.Module.Resources.RemoveWhere(res => res is EmbeddedResource);
+				if (!hasPacker)
+					ctx.Module.Resources.RemoveWhere(res => res is EmbeddedResource);
 
 				// move resources
 				string asmName = ctx.Name.RandomName(RenameMode.Letters);
 				PublicKey pubKey = null;
-				if (writer.Options.StrongNameKey != null)
-					pubKey = PublicKeyBase.CreatePublicKey(writer.Options.StrongNameKey.PublicKey);
+				if (writer.TheOptions.StrongNameKey != null)
+					pubKey = PublicKeyBase.CreatePublicKey(writer.TheOptions.StrongNameKey.PublicKey);
 				var assembly = new AssemblyDefUser(asmName, new Version(0, 0), pubKey);
 				assembly.Modules.Add(new ModuleDefUser(asmName + ".dll"));
 				ModuleDef module = assembly.ManifestModule;
 				assembly.ManifestModule.Kind = ModuleKind.Dll;
 				var asmRef = new AssemblyRefUser(module.Assembly);
-				foreach (EmbeddedResource res in resources) {
-					res.Attributes = ManifestResourceAttributes.Public;
-					module.Resources.Add(res);
-					ctx.Module.Resources.Add(new AssemblyLinkedResource(res.Name, asmRef, res.Attributes));
+				if (!hasPacker) {
+					foreach (EmbeddedResource res in resources) {
+						res.Attributes = ManifestResourceAttributes.Public;
+						module.Resources.Add(res);
+						ctx.Module.Resources.Add(new AssemblyLinkedResource(res.Name, asmRef, res.Attributes));
+					}
 				}
 				byte[] moduleBuff;
 				using (var ms = new MemoryStream()) {
-					module.Write(ms, new ModuleWriterOptions { StrongNameKey = writer.Options.StrongNameKey });
+					module.Write(ms, new ModuleWriterOptions { StrongNameKey = writer.TheOptions.StrongNameKey });
 					moduleBuff = ms.ToArray();
 				}
 
@@ -98,7 +102,8 @@ namespace Confuser.Protections.Resources {
 				MutationHelper.InjectKeys(ctx.InitMethod,
 				                          new[] { 0, 1 },
 				                          new[] { (int)(size / 4), (int)(keySeed) });
-			} else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
+			}
+			else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
 				TablesHeap tblHeap = writer.MetaData.TablesHeap;
 				tblHeap.FieldRVATable[writer.MetaData.GetFieldRVARid(ctx.DataField)].RVA = (uint)encryptedResource.RVA;
 			}

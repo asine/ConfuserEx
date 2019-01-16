@@ -39,10 +39,10 @@ namespace Confuser.Protections {
 		}
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {
-			pipeline.InsertPostStage(PipelineStage.BeginModule, new AntiDebugPhase(this));
+			pipeline.InsertPreStage(PipelineStage.ProcessModule, new AntiDebugPhase(this));
 		}
 
-		private class AntiDebugPhase : ProtectionPhase {
+		class AntiDebugPhase : ProtectionPhase {
 			public AntiDebugPhase(AntiDebugProtection parent)
 				: base(parent) { }
 
@@ -78,7 +78,7 @@ namespace Confuser.Protections {
 							attr = rt.GetRuntimeType(attrName);
 							module.Types.Add(attr = InjectHelper.Inject(attr, module));
 							foreach (IDnlibDef member in attr.FindDefinitions()) {
-								marker.Mark(member);
+								marker.Mark(member, (Protection)Parent);
 								name.Analyze(member);
 							}
 							name.SetCanRename(attr, false);
@@ -94,7 +94,7 @@ namespace Confuser.Protections {
 					cctor.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, init));
 
 					foreach (IDnlibDef member in members) {
-						marker.Mark(member);
+						marker.Mark(member, (Protection)Parent);
 						name.Analyze(member);
 
 						bool ren = true;
@@ -110,7 +110,8 @@ namespace Confuser.Protections {
 							CustomAttribute ca = method.CustomAttributes.Find(attrName);
 							if (ca != null)
 								ca.Constructor = attr.FindMethod(".ctor");
-						} else if (member is FieldDef) {
+						}
+						else if (member is FieldDef) {
 							var field = (FieldDef)member;
 							if (field.Access == FieldAttributes.Public)
 								field.Access = FieldAttributes.Assembly;
@@ -127,7 +128,7 @@ namespace Confuser.Protections {
 				}
 			}
 
-			private enum AntiMode {
+			enum AntiMode {
 				Safe,
 				Win32,
 				Antinet

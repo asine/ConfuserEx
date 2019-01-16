@@ -5,7 +5,7 @@ using dnlib.DotNet.Emit;
 
 namespace Confuser.Protections.ControlFlow {
 	internal class JumpMangler : ManglerBase {
-		private LinkedList<Instruction[]> SpiltFragments(InstrBlock block, CFContext ctx) {
+		LinkedList<Instruction[]> SpiltFragments(InstrBlock block, CFContext ctx) {
 			var fragments = new LinkedList<Instruction[]>();
 			var currentFragment = new List<Instruction>();
 

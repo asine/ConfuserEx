@@ -54,30 +54,36 @@ namespace Confuser.Core {
 		protected static void AddPlugins(
 			ConfuserContext context, IList<Protection> protections, IList<Packer> packers,
 			IList<ConfuserComponent> components, Assembly asm) {
-			foreach (Type i in asm.GetTypes()) {
-				if (i.IsAbstract || !HasAccessibleDefConstructor(i))
-					continue;
+			foreach(var module in asm.GetLoadedModules())
+				foreach (var i in module.GetTypes()) {
+					if (i.IsAbstract || !HasAccessibleDefConstructor(i))
+						continue;
 
-				if (typeof (Protection).IsAssignableFrom(i)) {
-					try {
-						protections.Add((Protection)Activator.CreateInstance(i));
-					} catch (Exception ex) {
-						context.Logger.ErrorException("Failed to instantiate protection '" + i.Name + "'.", ex);
+					if (typeof(Protection).IsAssignableFrom(i)) {
+						try {
+							protections.Add((Protection)Activator.CreateInstance(i));
+						}
+						catch (Exception ex) {
+							context.Logger.ErrorException("Failed to instantiate protection '" + i.Name + "'.", ex);
+						}
 					}
-				} else if (typeof (Packer).IsAssignableFrom(i)) {
-					try {
-						packers.Add((Packer)Activator.CreateInstance(i));
-					} catch (Exception ex) {
-						context.Logger.ErrorException("Failed to instantiate packer '" + i.Name + "'.", ex);
+					else if (typeof(Packer).IsAssignableFrom(i)) {
+						try {
+							packers.Add((Packer)Activator.CreateInstance(i));
+						}
+						catch (Exception ex) {
+							context.Logger.ErrorException("Failed to instantiate packer '" + i.Name + "'.", ex);
+						}
 					}
-				} else if (typeof (ConfuserComponent).IsAssignableFrom(i)) {
-					try {
-						components.Add((ConfuserComponent)Activator.CreateInstance(i));
-					} catch (Exception ex) {
-						context.Logger.ErrorException("Failed to instantiate component '" + i.Name + "'.", ex);
+					else if (typeof(ConfuserComponent).IsAssignableFrom(i)) {
+						try {
+							components.Add((ConfuserComponent)Activator.CreateInstance(i));
+						}
+						catch (Exception ex) {
+							context.Logger.ErrorException("Failed to instantiate component '" + i.Name + "'.", ex);
+						}
 					}
 				}
-			}
 			context.CheckCancellation();
 		}
 
@@ -94,21 +100,24 @@ namespace Confuser.Core {
 			try {
 				Assembly protAsm = Assembly.Load("Confuser.Protections");
 				AddPlugins(context, protections, packers, components, protAsm);
-			} catch (Exception ex) {
+			}
+			catch (Exception ex) {
 				context.Logger.WarnException("Failed to load built-in protections.", ex);
 			}
 
 			try {
 				Assembly renameAsm = Assembly.Load("Confuser.Renamer");
 				AddPlugins(context, protections, packers, components, renameAsm);
-			} catch (Exception ex) {
+			}
+			catch (Exception ex) {
 				context.Logger.WarnException("Failed to load renamer.", ex);
 			}
 
 			try {
 				Assembly renameAsm = Assembly.Load("Confuser.DynCipher");
 				AddPlugins(context, protections, packers, components, renameAsm);
-			} catch (Exception ex) {
+			}
+			catch (Exception ex) {
 				context.Logger.WarnException("Failed to load dynamic cipher library.", ex);
 			}
 
@@ -117,7 +126,8 @@ namespace Confuser.Core {
 				try {
 					Assembly plugin = Assembly.LoadFile(realPath);
 					AddPlugins(context, protections, packers, components, plugin);
-				} catch (Exception ex) {
+				}
+				catch (Exception ex) {
 					context.Logger.WarnException("Failed to load plugin '" + pluginPath + "'.", ex);
 				}
 			}

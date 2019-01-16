@@ -13,11 +13,11 @@ using MethodBody = dnlib.DotNet.Writer.MethodBody;
 
 namespace Confuser.Protections.ControlFlow {
 	internal class x86Predicate : IPredicate {
-		private static readonly object Encoding = new object();
-		private readonly CFContext ctx;
-		private x86Encoding encoding;
+		static readonly object Encoding = new object();
+		readonly CFContext ctx;
+		x86Encoding encoding;
 
-		private bool inited;
+		bool inited;
 
 		public x86Predicate(CFContext ctx) {
 			this.ctx = ctx;
@@ -45,13 +45,13 @@ namespace Confuser.Protections.ControlFlow {
 			return encoding.expCompiled(key);
 		}
 
-		private class x86Encoding {
-			private byte[] code;
-			private MethodBody codeChunk;
+		class x86Encoding {
+			byte[] code;
+			MethodBody codeChunk;
 
 			public Func<int, int> expCompiled;
-			private Expression expression;
-			private Expression inverse;
+			Expression expression;
+			Expression inverse;
 			public MethodDef native;
 
 			public void Compile(CFContext ctx) {
@@ -67,7 +67,7 @@ namespace Confuser.Protections.ControlFlow {
 				//native.HasSecurity = true;
 				ctx.Method.Module.GlobalType.Methods.Add(native);
 
-				ctx.Context.Registry.GetService<IMarkerService>().Mark(native);
+				ctx.Context.Registry.GetService<IMarkerService>().Mark(native, ctx.Protection);
 				ctx.Context.Registry.GetService<INameService>().SetCanRename(native, false);
 
 				x86Register? reg;
@@ -83,7 +83,7 @@ namespace Confuser.Protections.ControlFlow {
 
 				code = CodeGenUtils.AssembleCode(codeGen, reg.Value);
 
-				expCompiled = new DMCodeGen(typeof (int), new[] { Tuple.Create("{VAR}", typeof (int)) })
+				expCompiled = new DMCodeGen(typeof(int), new[] { Tuple.Create("{VAR}", typeof(int)) })
 					.GenerateCIL(expression)
 					.Compile<Func<int, int>>();
 
@@ -91,11 +91,12 @@ namespace Confuser.Protections.ControlFlow {
 				ctx.Context.CurrentModuleWriterListener.OnWriterEvent += InjectNativeCode;
 			}
 
-			private void InjectNativeCode(object sender, ModuleWriterListenerEventArgs e) {
-				var writer = (ModuleWriter)sender;
+			void InjectNativeCode(object sender, ModuleWriterListenerEventArgs e) {
+				var writer = (ModuleWriterBase)sender;
 				if (e.WriterEvent == ModuleWriterEvent.MDEndWriteMethodBodies) {
 					codeChunk = writer.MethodBodies.Add(new MethodBody(code));
-				} else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
+				}
+				else if (e.WriterEvent == ModuleWriterEvent.EndCalculateRvasAndFileOffsets) {
 					uint rid = writer.MetaData.GetRid(native);
 					writer.MetaData.TablesHeap.MethodTable[rid].RVA = (uint)codeChunk.RVA;
 				}

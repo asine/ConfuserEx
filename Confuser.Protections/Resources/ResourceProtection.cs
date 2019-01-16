@@ -29,12 +29,10 @@ namespace Confuser.Protections {
 			get { return ProtectionPreset.Normal; }
 		}
 
-		protected override void Initialize(ConfuserContext context) {
-			// context.Registry.RegisterService(_ServiceId, typeof(IControlFlowService), this);
-		}
+		protected override void Initialize(ConfuserContext context) { }
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {
-			pipeline.InsertPostStage(PipelineStage.BeginModule, new InjectPhase(this));
+			pipeline.InsertPreStage(PipelineStage.ProcessModule, new InjectPhase(this));
 		}
 	}
 }

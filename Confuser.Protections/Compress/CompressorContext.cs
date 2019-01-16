@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using Confuser.Core;
 using Confuser.Core.Services;
 using dnlib.DotNet;
 
@@ -18,6 +17,8 @@ namespace Confuser.Protections.Compress {
 		public int ModuleIndex;
 		public string ModuleName;
 		public byte[] OriginModule;
+		public ModuleDef OriginModuleDef;
+		public bool CompatMode;
 
 		public byte[] Encrypt(ICompressionService compress, byte[] data, uint seed, Action<double> progressFunc) {
 			data = (byte[])data.Clone();

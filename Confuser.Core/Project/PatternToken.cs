@@ -28,7 +28,7 @@ namespace Confuser.Core.Project {
 		/// <summary>
 		///     A comma.
 		/// </summary>
-		Comma,
+		Comma
 	}
 
 

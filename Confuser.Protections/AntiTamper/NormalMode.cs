@@ -15,15 +15,15 @@ using MethodBody = dnlib.DotNet.Writer.MethodBody;
 
 namespace Confuser.Protections.AntiTamper {
 	internal class NormalMode : IModeHandler {
-		private uint c;
-		private IKeyDeriver deriver;
+		uint c;
+		IKeyDeriver deriver;
 
-		private List<MethodDef> methods;
-		private uint name1, name2;
-		private RandomGenerator random;
-		private uint v;
-		private uint x;
-		private uint z;
+		List<MethodDef> methods;
+		uint name1, name2;
+		RandomGenerator random;
+		uint v;
+		uint x;
+		uint z;
 
 		public void HandleInject(AntiTamperProtection parent, ConfuserContext context, ProtectionParameters parameters) {
 			random = context.Registry.GetService<IRandomService>().GetRandomGenerator(parent.FullId);
@@ -57,7 +57,8 @@ namespace Confuser.Protections.AntiTamper {
 				Instruction instr = instrs[i];
 				if (instr.OpCode == OpCodes.Ldtoken) {
 					instr.Operand = context.CurrentModule.GlobalType;
-				} else if (instr.OpCode == OpCodes.Call) {
+				}
+				else if (instr.OpCode == OpCodes.Call) {
 					var method = (IMethod)instr.Operand;
 					if (method.DeclaringType.Name == "Mutation" &&
 					    method.Name == "Crypt") {
@@ -82,7 +83,7 @@ namespace Confuser.Protections.AntiTamper {
 			var name = context.Registry.GetService<INameService>();
 			var marker = context.Registry.GetService<IMarkerService>();
 			foreach (IDnlibDef def in members) {
-				name.MarkHelper(def, marker);
+				name.MarkHelper(def, marker, parent);
 				if (def is MethodDef)
 					parent.ExcludeMethod(context, (MethodDef)def);
 			}
@@ -98,16 +99,17 @@ namespace Confuser.Protections.AntiTamper {
 			context.CurrentModuleWriterListener.OnWriterEvent += OnWriterEvent;
 		}
 
-		private void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
-			var writer = (ModuleWriter)sender;
+		void OnWriterEvent(object sender, ModuleWriterListenerEventArgs e) {
+			var writer = (ModuleWriterBase)sender;
 			if (e.WriterEvent == ModuleWriterEvent.MDEndCreateTables) {
 				CreateSections(writer);
-			} else if (e.WriterEvent == ModuleWriterEvent.BeginStrongNameSign) {
+			}
+			else if (e.WriterEvent == ModuleWriterEvent.BeginStrongNameSign) {
 				EncryptSection(writer);
 			}
 		}
 
-		private void CreateSections(ModuleWriter writer) {
+		void CreateSections(ModuleWriterBase writer) {
 			var nameBuffer = new byte[8];
 			nameBuffer[0] = (byte)(name1 >> 0);
 			nameBuffer[1] = (byte)(name1 >> 8);
@@ -139,15 +141,18 @@ namespace Confuser.Protections.AntiTamper {
 				peSection.Add(writer.StrongNameSignature, alignment);
 				moved = true;
 			}
-			if (writer.ImportAddressTable != null) {
-				alignment = writer.TextSection.Remove(writer.ImportAddressTable).Value;
-				peSection.Add(writer.ImportAddressTable, alignment);
-				moved = true;
-			}
-			if (writer.StartupStub != null) {
-				alignment = writer.TextSection.Remove(writer.StartupStub).Value;
-				peSection.Add(writer.StartupStub, alignment);
-				moved = true;
+			var managedWriter = writer as ModuleWriter;
+			if (managedWriter != null) {
+				if (managedWriter.ImportAddressTable != null) {
+					alignment = writer.TextSection.Remove(managedWriter.ImportAddressTable).Value;
+					peSection.Add(managedWriter.ImportAddressTable, alignment);
+					moved = true;
+				}
+				if (managedWriter.StartupStub != null) {
+					alignment = writer.TextSection.Remove(managedWriter.StartupStub).Value;
+					peSection.Add(managedWriter.StartupStub, alignment);
+					moved = true;
+				}
 			}
 			if (moved)
 				writer.Sections.Add(peSection);
@@ -167,7 +172,7 @@ namespace Confuser.Protections.AntiTamper {
 			newSection.Add(new ByteArrayChunk(new byte[4]), 4);
 		}
 
-		private void EncryptSection(ModuleWriter writer) {
+		void EncryptSection(ModuleWriterBase writer) {
 			Stream stream = writer.DestinationStream;
 			var reader = new BinaryReader(writer.DestinationStream);
 			stream.Position = 0x3C;
@@ -180,17 +185,30 @@ namespace Confuser.Protections.AntiTamper {
 			stream.Position += 2 + optSize;
 
 			uint encLoc = 0, encSize = 0;
+			int origSects = -1;
+			if (writer is NativeModuleWriter && writer.Module is ModuleDefMD)
+				origSects = ((ModuleDefMD)writer.Module).MetaData.PEImage.ImageSectionHeaders.Count;
 			for (int i = 0; i < sections; i++) {
-				uint nameHash = reader.ReadUInt32() * reader.ReadUInt32();
+				uint nameHash;
+				if (origSects > 0) {
+					origSects--;
+					stream.Write(new byte[8], 0, 8);
+					nameHash = 0;
+				}
+				else
+					nameHash = reader.ReadUInt32() * reader.ReadUInt32();
 				stream.Position += 8;
 				if (nameHash == name1 * name2) {
 					encSize = reader.ReadUInt32();
 					encLoc = reader.ReadUInt32();
-				} else if (nameHash != 0) {
+				}
+				else if (nameHash != 0) {
 					uint sectSize = reader.ReadUInt32();
 					uint sectLoc = reader.ReadUInt32();
 					Hash(stream, reader, sectLoc, sectSize);
 				}
+				else
+					stream.Position += 8;
 				stream.Position += 16;
 			}
 
@@ -209,7 +227,7 @@ namespace Confuser.Protections.AntiTamper {
 			stream.Write(byteResult, 0, byteResult.Length);
 		}
 
-		private void Hash(Stream stream, BinaryReader reader, uint offset, uint size) {
+		void Hash(Stream stream, BinaryReader reader, uint offset, uint size) {
 			long original = stream.Position;
 			stream.Position = offset;
 			size >>= 2;
@@ -224,7 +242,7 @@ namespace Confuser.Protections.AntiTamper {
 			stream.Position = original;
 		}
 
-		private uint[] DeriveKey() {
+		uint[] DeriveKey() {
 			uint[] dst = new uint[0x10], src = new uint[0x10];
 			for (int i = 0; i < 0x10; i++) {
 				dst[i] = v;

@@ -18,6 +18,6 @@ namespace Confuser.Core {
 		Aggressive = 3,
 
 		/// <summary> The protection provides strongest security with possible incompatibility. </summary>
-		Maximum = 4,
+		Maximum = 4
 	}
 }

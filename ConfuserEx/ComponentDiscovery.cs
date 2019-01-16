@@ -5,21 +5,26 @@ using Confuser.Core;
 
 namespace ConfuserEx {
 	internal class ComponentDiscovery {
-		private static void CrossDomainLoadComponents() {
+		static void CrossDomainLoadComponents() {
 			var ctx = (CrossDomainContext)AppDomain.CurrentDomain.GetData("ctx");
-			Assembly assembly = Assembly.LoadFile(ctx.PluginPath);
-			foreach (Type i in assembly.GetTypes()) {
-				if (i.IsAbstract || !PluginDiscovery.HasAccessibleDefConstructor(i))
-					continue;
+			// Initialize the version resolver callback
+			ConfuserEngine.Version.ToString();
 
-				if (typeof (Protection).IsAssignableFrom(i)) {
-					var prot = (Protection)Activator.CreateInstance(i);
-					ctx.AddProtection(Info.FromComponent(prot, ctx.PluginPath));
-				} else if (typeof (Packer).IsAssignableFrom(i)) {
-					var packer = (Packer)Activator.CreateInstance(i);
-					ctx.AddPacker(Info.FromComponent(packer, ctx.PluginPath));
+			Assembly assembly = Assembly.LoadFile(ctx.PluginPath);
+			foreach (var module in assembly.GetLoadedModules())
+				foreach (var i in module.GetTypes()) {
+					if (i.IsAbstract || !PluginDiscovery.HasAccessibleDefConstructor(i))
+						continue;
+
+					if (typeof(Protection).IsAssignableFrom(i)) {
+						var prot = (Protection)Activator.CreateInstance(i);
+						ctx.AddProtection(Info.FromComponent(prot, ctx.PluginPath));
+					}
+					else if (typeof(Packer).IsAssignableFrom(i)) {
+						var packer = (Packer)Activator.CreateInstance(i);
+						ctx.AddPacker(Info.FromComponent(packer, ctx.PluginPath));
+					}
 				}
-			}
 		}
 
 		public static void LoadComponents(IList<ConfuserComponent> protections, IList<ConfuserComponent> packers, string pluginPath) {
@@ -35,10 +40,10 @@ namespace ConfuserEx {
 			packers.RemoveWhere(comp => comp is InfoComponent && ((InfoComponent)comp).info.path == pluginPath);
 		}
 
-		private class CrossDomainContext : MarshalByRefObject {
-			private readonly IList<ConfuserComponent> packers;
-			private readonly string pluginPath;
-			private readonly IList<ConfuserComponent> protections;
+		class CrossDomainContext : MarshalByRefObject {
+			readonly IList<ConfuserComponent> packers;
+			readonly string pluginPath;
+			readonly IList<ConfuserComponent> protections;
 
 			public CrossDomainContext(IList<ConfuserComponent> protections, IList<ConfuserComponent> packers, string pluginPath) {
 				this.protections = protections;
@@ -51,16 +56,24 @@ namespace ConfuserEx {
 			}
 
 			public void AddProtection(Info info) {
+				foreach (var comp in protections) {
+					if (comp.Id == info.id)
+						return;
+				}
 				protections.Add(new InfoComponent(info));
 			}
 
 			public void AddPacker(Info info) {
+				foreach (var comp in packers) {
+					if (comp.Id == info.id)
+						return;
+				}
 				packers.Add(new InfoComponent(info));
 			}
 		}
 
 		[Serializable]
-		private class Info {
+		class Info {
 			public string desc;
 			public string fullId;
 			public string id;
@@ -78,7 +91,7 @@ namespace ConfuserEx {
 			}
 		}
 
-		private class InfoComponent : ConfuserComponent {
+		class InfoComponent : ConfuserComponent {
 			public readonly Info info;
 
 			public InfoComponent(Info info) {

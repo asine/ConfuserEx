@@ -4,7 +4,7 @@ namespace Confuser.Core {
 	/// <summary>
 	///     Indicates the <see cref="Protection" /> must initialize before the specified protections.
 	/// </summary>
-	[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+	[AttributeUsage(AttributeTargets.Class)]
 	public class BeforeProtectionAttribute : Attribute {
 		/// <summary>
 		///     Initializes a new instance of the <see cref="BeforeProtectionAttribute" /> class.
@@ -24,7 +24,7 @@ namespace Confuser.Core {
 	/// <summary>
 	///     Indicates the <see cref="Protection" /> must initialize after the specified protections.
 	/// </summary>
-	[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+	[AttributeUsage(AttributeTargets.Class)]
 	public class AfterProtectionAttribute : Attribute {
 		/// <summary>
 		///     Initializes a new instance of the <see cref="BeforeProtectionAttribute" /> class.

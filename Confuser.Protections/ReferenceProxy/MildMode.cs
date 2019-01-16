@@ -7,7 +7,7 @@ using dnlib.DotNet.Emit;
 namespace Confuser.Protections.ReferenceProxy {
 	internal class MildMode : RPMode {
 		// proxy method, { opCode, calling type, target method}
-		private readonly Dictionary<Tuple<Code, TypeDef, IMethod>, MethodDef> proxies = new Dictionary<Tuple<Code, TypeDef, IMethod>, MethodDef>();
+		readonly Dictionary<Tuple<Code, TypeDef, IMethod>, MethodDef> proxies = new Dictionary<Tuple<Code, TypeDef, IMethod>, MethodDef>();
 
 		public override void ProcessCall(RPContext ctx, int instrIndex) {
 			Instruction invoke = ctx.Body.Instructions[instrIndex];
@@ -37,7 +37,7 @@ namespace Confuser.Protections.ReferenceProxy {
 					sig.Params.RemoveAt(0);
 				}
 
-				ctx.Marker.Mark(proxy);
+				ctx.Marker.Mark(proxy, ctx.Protection);
 				ctx.Name.Analyze(proxy);
 				ctx.Name.SetCanRename(proxy, false);
 
@@ -61,8 +61,13 @@ namespace Confuser.Protections.ReferenceProxy {
 					proxy.Name,
 					proxy.MethodSig,
 					new GenericInstSig((ClassOrValueTypeSig)ctx.Method.DeclaringType.ToTypeSig(), genArgs).ToTypeDefOrRef());
-			} else
+			}
+			else
 				invoke.Operand = proxy;
+
+			var targetDef = target.ResolveMethodDef();
+			if (targetDef != null)
+				ctx.Context.Annotations.Set(targetDef, ReferenceProxyProtection.Targeted, ReferenceProxyProtection.Targeted);
 		}
 
 		public override void Finalize(RPContext ctx) { }

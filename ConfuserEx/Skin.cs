@@ -6,16 +6,16 @@ using System.Windows.Documents;
 namespace ConfuserEx {
 	public class Skin {
 		public static readonly DependencyProperty EmptyPromptProperty =
-			DependencyProperty.RegisterAttached("EmptyPrompt", typeof (string), typeof (Skin), new UIPropertyMetadata(null));
+			DependencyProperty.RegisterAttached("EmptyPrompt", typeof(string), typeof(Skin), new UIPropertyMetadata(null));
 
 		public static readonly DependencyProperty TabsDisabledProperty =
-			DependencyProperty.RegisterAttached("TabsDisabled", typeof (bool), typeof (Skin), new UIPropertyMetadata(false));
+			DependencyProperty.RegisterAttached("TabsDisabled", typeof(bool), typeof(Skin), new UIPropertyMetadata(false));
 
 		public static readonly DependencyProperty FocusOverlayProperty =
-			DependencyProperty.RegisterAttached("FocusOverlay", typeof (bool), typeof (Skin), new UIPropertyMetadata(true));
+			DependencyProperty.RegisterAttached("FocusOverlay", typeof(bool), typeof(Skin), new UIPropertyMetadata(true));
 
 		public static readonly DependencyProperty RTBDocumentProperty =
-			DependencyProperty.RegisterAttached("RTBDocument", typeof (FlowDocument), typeof (Skin), new FrameworkPropertyMetadata(null, OnRTBDocumentChanged));
+			DependencyProperty.RegisterAttached("RTBDocument", typeof(FlowDocument), typeof(Skin), new FrameworkPropertyMetadata(null, OnRTBDocumentChanged));
 
 		public static string GetEmptyPrompt(DependencyObject obj) {
 			return (string)obj.GetValue(EmptyPromptProperty);
@@ -46,7 +46,8 @@ namespace ConfuserEx {
 			if (dpe.NewValue != null) {
 				rtb.Document = (FlowDocument)dpe.NewValue;
 				rtb.TextChanged += (sender, e) => rtb.ScrollToEnd();
-			} else
+			}
+			else
 				rtb.Document = new FlowDocument();
 		}
 

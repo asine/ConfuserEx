@@ -10,16 +10,16 @@ using dnlib.DotNet.Emit;
 
 namespace Confuser.Protections.AntiTamper {
 	internal class DynamicDeriver : IKeyDeriver {
-		private StatementBlock derivation;
-		private Action<uint[], uint[]> encryptFunc;
+		StatementBlock derivation;
+		Action<uint[], uint[]> encryptFunc;
 
 		public void Init(ConfuserContext ctx, RandomGenerator random) {
 			StatementBlock dummy;
 			ctx.Registry.GetService<IDynCipherService>().GenerateCipherPair(random, out derivation, out dummy);
 
-			var dmCodeGen = new DMCodeGen(typeof (void), new[] {
-				Tuple.Create("{BUFFER}", typeof (uint[])),
-				Tuple.Create("{KEY}", typeof (uint[]))
+			var dmCodeGen = new DMCodeGen(typeof(void), new[] {
+				Tuple.Create("{BUFFER}", typeof(uint[])),
+				Tuple.Create("{KEY}", typeof(uint[]))
 			});
 			dmCodeGen.GenerateCIL(derivation);
 			encryptFunc = dmCodeGen.Compile<Action<uint[], uint[]>>();
@@ -27,7 +27,7 @@ namespace Confuser.Protections.AntiTamper {
 
 		public uint[] DeriveKey(uint[] a, uint[] b) {
 			var ret = new uint[0x10];
-			Buffer.BlockCopy(a, 0, ret, 0, a.Length * sizeof (uint));
+			Buffer.BlockCopy(a, 0, ret, 0, a.Length * sizeof(uint));
 			encryptFunc(ret, b);
 			return ret;
 		}
@@ -40,9 +40,9 @@ namespace Confuser.Protections.AntiTamper {
 			return ret;
 		}
 
-		private class CodeGen : CILCodeGen {
-			private readonly Local block;
-			private readonly Local key;
+		class CodeGen : CILCodeGen {
+			readonly Local block;
+			readonly Local key;
 
 			public CodeGen(Local block, Local key, MethodDef method, IList<Instruction> instrs)
 				: base(method, instrs) {

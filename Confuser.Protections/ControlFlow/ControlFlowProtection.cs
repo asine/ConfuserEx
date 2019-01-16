@@ -38,7 +38,7 @@ namespace Confuser.Protections {
 		}
 
 		protected override void Initialize(ConfuserContext context) {
-			context.Registry.RegisterService(_ServiceId, typeof (IControlFlowService), this);
+			context.Registry.RegisterService(_ServiceId, typeof(IControlFlowService), this);
 		}
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using Confuser.Core;
 using Confuser.DynCipher.AST;
 using Confuser.DynCipher.Generation;
 using dnlib.DotNet;
@@ -8,7 +7,7 @@ using dnlib.DotNet.Emit;
 
 namespace Confuser.Protections.Resources {
 	internal class DynamicMode : IEncodeMode {
-		private Action<uint[], uint[]> encryptFunc;
+		Action<uint[], uint[]> encryptFunc;
 
 		public IEnumerable<Instruction> EmitDecrypt(MethodDef init, REContext ctx, Local block, Local key) {
 			StatementBlock encrypt, decrypt;
@@ -19,9 +18,9 @@ namespace Confuser.Protections.Resources {
 			codeGen.GenerateCIL(decrypt);
 			codeGen.Commit(init.Body);
 
-			var dmCodeGen = new DMCodeGen(typeof (void), new[] {
-				Tuple.Create("{BUFFER}", typeof (uint[])),
-				Tuple.Create("{KEY}", typeof (uint[]))
+			var dmCodeGen = new DMCodeGen(typeof(void), new[] {
+				Tuple.Create("{BUFFER}", typeof(uint[])),
+				Tuple.Create("{KEY}", typeof(uint[]))
 			});
 			dmCodeGen.GenerateCIL(encrypt);
 			encryptFunc = dmCodeGen.Compile<Action<uint[], uint[]>>();
@@ -31,14 +30,14 @@ namespace Confuser.Protections.Resources {
 
 		public uint[] Encrypt(uint[] data, int offset, uint[] key) {
 			var ret = new uint[key.Length];
-			Buffer.BlockCopy(data, offset * sizeof (uint), ret, 0, key.Length * sizeof (uint));
+			Buffer.BlockCopy(data, offset * sizeof(uint), ret, 0, key.Length * sizeof(uint));
 			encryptFunc(ret, key);
 			return ret;
 		}
 
-		private class CodeGen : CILCodeGen {
-			private readonly Local block;
-			private readonly Local key;
+		class CodeGen : CILCodeGen {
+			readonly Local block;
+			readonly Local key;
 
 			public CodeGen(Local block, Local key, MethodDef init, IList<Instruction> instrs)
 				: base(init, instrs) {

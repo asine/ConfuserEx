@@ -22,7 +22,7 @@ namespace Confuser.DynCipher {
 		}
 
 		protected override void Initialize(ConfuserContext context) {
-			context.Registry.RegisterService(_ServiceId, typeof (IDynCipherService), new DynCipherService());
+			context.Registry.RegisterService(_ServiceId, typeof(IDynCipherService), new DynCipherService());
 		}
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {

@@ -4,10 +4,12 @@ using System.Threading;
 
 namespace Confuser.Runtime {
 	internal static class AntiDebugSafe {
-		private static void Initialize() {
+		static void Initialize() {
 			string x = "COR";
-			if (Environment.GetEnvironmentVariable(x + "_PROFILER") != null ||
-			    Environment.GetEnvironmentVariable(x + "_ENABLE_PROFILING") != null)
+			var env = typeof(Environment);
+			var method = env.GetMethod("GetEnvironmentVariable", new[] { typeof(string) });
+			if (method != null &&
+			    "1".Equals(method.Invoke(null, new object[] { x + "_ENABLE_PROFILING" })))
 				Environment.FailFast(null);
 
 			var thread = new Thread(Worker);
@@ -15,7 +17,7 @@ namespace Confuser.Runtime {
 			thread.Start(null);
 		}
 
-		private static void Worker(object thread) {
+		static void Worker(object thread) {
 			var th = thread as Thread;
 			if (th == null) {
 				th = new Thread(Worker);

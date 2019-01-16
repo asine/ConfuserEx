@@ -3,9 +3,9 @@ using System.Text;
 
 namespace Confuser.Runtime {
 	internal static class Constant {
-		private static byte[] b;
+		static byte[] b;
 
-		private static void Initialize() {
+		static void Initialize() {
 			var l = (uint)Mutation.KeyI0;
 			uint[] q = Mutation.Placeholder(new uint[Mutation.KeyI0]);
 
@@ -39,7 +39,7 @@ namespace Confuser.Runtime {
 			b = Lzma.Decompress(o);
 		}
 
-		private static T Get<T>(uint id) {
+		static T Get<T>(uint id) {
 			id = (uint)Mutation.Placeholder((int)id);
 			uint t = id >> 30;
 
@@ -49,21 +49,81 @@ namespace Confuser.Runtime {
 
 			if (t == Mutation.KeyI0) {
 				int l = b[id++] | (b[id++] << 8) | (b[id++] << 16) | (b[id++] << 24);
-				ret = (T)(object)Encoding.UTF8.GetString(b, (int)id, l);
+				ret = (T)(object)string.Intern(Encoding.UTF8.GetString(b, (int)id, l));
 			}
-				// NOTE: Assume little-endian
+			// NOTE: Assume little-endian
 			else if (t == Mutation.KeyI1) {
 				var v = new T[1];
 				Buffer.BlockCopy(b, (int)id, v, 0, Mutation.Value<int>());
 				ret = v[0];
-			} else if (t == Mutation.KeyI2) {
+			}
+			else if (t == Mutation.KeyI2) {
 				int s = b[id++] | (b[id++] << 8) | (b[id++] << 16) | (b[id++] << 24);
 				int l = b[id++] | (b[id++] << 8) | (b[id++] << 16) | (b[id++] << 24);
-				Array v = Array.CreateInstance(typeof (T).GetElementType(), l);
+				Array v = Array.CreateInstance(typeof(T).GetElementType(), l);
 				Buffer.BlockCopy(b, (int)id, v, 0, s - 4);
 				ret = (T)(object)v;
 			}
 			return ret;
+		}
+	}
+
+	internal struct CFGCtx {
+		uint A;
+		uint B;
+		uint C;
+		uint D;
+
+		public CFGCtx(uint seed) {
+			A = seed *= 0x21412321;
+			B = seed *= 0x21412321;
+			C = seed *= 0x21412321;
+			D = seed *= 0x21412321;
+		}
+
+		public uint Next(byte f, uint q) {
+			if ((f & 0x80) != 0) {
+				switch (f & 0x3) {
+					case 0:
+						A = q;
+						break;
+					case 1:
+						B = q;
+						break;
+					case 2:
+						C = q;
+						break;
+					case 3:
+						D = q;
+						break;
+				}
+			}
+			else {
+				switch (f & 0x3) {
+					case 0:
+						A ^= q;
+						break;
+					case 1:
+						B += q;
+						break;
+					case 2:
+						C ^= q;
+						break;
+					case 3:
+						D -= q;
+						break;
+				}
+			}
+
+			switch ((f >> 2) & 0x3) {
+				case 0:
+					return A;
+				case 1:
+					return B;
+				case 2:
+					return C;
+			}
+			return D;
 		}
 	}
 }

@@ -11,10 +11,10 @@ namespace ConfuserEx.ViewModel {
 	}
 
 	public class ProjectRuleVM : ViewModelBase, IViewModel<Rule> {
-		private readonly ProjectVM parent;
-		private readonly Rule rule;
-		private string error;
-		private PatternExpression exp;
+		readonly ProjectVM parent;
+		readonly Rule rule;
+		string error;
+		PatternExpression exp;
 
 		public ProjectRuleVM(ProjectVM parent, Rule rule) {
 			this.parent = parent;
@@ -73,12 +73,15 @@ namespace ConfuserEx.ViewModel {
 			get { return rule; }
 		}
 
-		private void ParseExpression() {
+		void ParseExpression() {
+			if (Pattern == null)
+				return;
 			PatternExpression expression;
 			try {
 				expression = new PatternParser().Parse(Pattern);
 				ExpressionError = null;
-			} catch (Exception e) {
+			}
+			catch (Exception e) {
 				ExpressionError = e.Message;
 				expression = null;
 			}

@@ -22,7 +22,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			get { return "Encoding reference proxies"; }
 		}
 
-		private static RPContext ParseParameters(MethodDef method, ConfuserContext context, ProtectionParameters parameters, RPStore store) {
+		RPContext ParseParameters(MethodDef method, ConfuserContext context, ProtectionParameters parameters, RPStore store) {
 			var ret = new RPContext();
 			ret.Mode = parameters.GetParameter(context, method, "mode", Mode.Mild);
 			ret.Encoding = parameters.GetParameter(context, method, "encoding", EncodingType.Normal);
@@ -41,6 +41,7 @@ namespace Confuser.Protections.ReferenceProxy {
 				                    .SelectMany(instr => (Instruction[])instr.Operand))
 				      .Where(target => target != null));
 
+			ret.Protection = (ReferenceProxyProtection)Parent;
 			ret.Random = store.random;
 			ret.Context = context;
 			ret.Marker = context.Registry.GetService<IMarkerService>();
@@ -80,7 +81,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			return ret;
 		}
 
-		private static RPContext ParseParameters(ModuleDef module, ConfuserContext context, ProtectionParameters parameters, RPStore store) {
+		static RPContext ParseParameters(ModuleDef module, ConfuserContext context, ProtectionParameters parameters, RPStore store) {
 			var ret = new RPContext();
 			ret.Depth = parameters.GetParameter(context, module, "depth", 3);
 			ret.InitCount = parameters.GetParameter(context, module, "initCount", 0x10);
@@ -117,11 +118,16 @@ namespace Confuser.Protections.ReferenceProxy {
 				store.strong.Finalize(ctx);
 		}
 
-		private void ProcessMethod(RPContext ctx) {
+		void ProcessMethod(RPContext ctx) {
 			for (int i = 0; i < ctx.Body.Instructions.Count; i++) {
 				Instruction instr = ctx.Body.Instructions[i];
 				if (instr.OpCode.Code == Code.Call || instr.OpCode.Code == Code.Callvirt || instr.OpCode.Code == Code.Newobj) {
 					var operand = (IMethod)instr.Operand;
+					var def = operand.ResolveMethodDef();
+
+					if (def != null && ctx.Context.Annotations.Get<object>(def, ReferenceProxyProtection.TargetExcluded) != null)
+						return;
+
 					// Call constructor
 					if (instr.OpCode.Code != Code.Newobj && operand.Name == ".ctor")
 						continue;
@@ -133,6 +139,10 @@ namespace Confuser.Protections.ReferenceProxy {
 						continue;
 					// No generic types / array types
 					if (operand.DeclaringType is TypeSpec)
+						continue;
+					// No varargs
+					if (operand.MethodSig.ParamsAfterSentinel != null &&
+						operand.MethodSig.ParamsAfterSentinel.Count > 0)
 						continue;
 					TypeDef declType = operand.DeclaringType.ResolveTypeDefThrow();
 					// No delegates
@@ -150,7 +160,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			}
 		}
 
-		private class RPStore {
+		class RPStore {
 			public readonly Dictionary<MethodSig, TypeDef> delegates = new Dictionary<MethodSig, TypeDef>(new MethodSigComparer());
 			public ExpressionEncoding expression;
 			public MildMode mild;
@@ -160,7 +170,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			public StrongMode strong;
 			public x86Encoding x86;
 
-			private class MethodSigComparer : IEqualityComparer<MethodSig> {
+			class MethodSigComparer : IEqualityComparer<MethodSig> {
 				public bool Equals(MethodSig x, MethodSig y) {
 					return new SigComparer().Equals(x, y);
 				}

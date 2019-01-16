@@ -26,6 +26,11 @@ namespace Confuser.Protections.Resources {
 
 		protected override void Execute(ConfuserContext context, ProtectionParameters parameters) {
 			if (parameters.Targets.Any()) {
+				if (!UTF8String.IsNullOrEmpty(context.CurrentModule.Assembly.Culture)) {
+					context.Logger.DebugFormat("Skipping resource encryption for satellite assembly '{0}'.",
+					                           context.CurrentModule.Assembly.FullName);
+					return;
+				}
 				var compression = context.Registry.GetService<ICompressionService>();
 				var name = context.Registry.GetService<INameService>();
 				var marker = context.Registry.GetService<IMarkerService>();
@@ -55,7 +60,7 @@ namespace Confuser.Protections.Resources {
 
 				// Inject helpers
 				MethodDef decomp = compression.GetRuntimeDecompressor(context.CurrentModule, member => {
-					name.MarkHelper(member, marker);
+					name.MarkHelper(member, marker, (Protection)Parent);
 					if (member is MethodDef)
 						ProtectionParameters.GetParameters(context, member).Remove(Parent);
 				});
@@ -71,12 +76,13 @@ namespace Confuser.Protections.Resources {
 			}
 		}
 
-		private void InjectHelpers(ConfuserContext context, ICompressionService compression, IRuntimeService rt, REContext moduleCtx) {
-			IEnumerable<IDnlibDef> members = InjectHelper.Inject(rt.GetRuntimeType("Confuser.Runtime.Resource"), context.CurrentModule.GlobalType, context.CurrentModule);
+		void InjectHelpers(ConfuserContext context, ICompressionService compression, IRuntimeService rt, REContext moduleCtx) {
+			var rtName = context.Packer != null ? "Confuser.Runtime.Resource_Packer" : "Confuser.Runtime.Resource";
+			IEnumerable<IDnlibDef> members = InjectHelper.Inject(rt.GetRuntimeType(rtName), context.CurrentModule.GlobalType, context.CurrentModule);
 			foreach (IDnlibDef member in members) {
 				if (member.Name == "Initialize")
 					moduleCtx.InitMethod = (MethodDef)member;
-				moduleCtx.Name.MarkHelper(member, moduleCtx.Marker);
+				moduleCtx.Name.MarkHelper(member, moduleCtx.Marker, (Protection)Parent);
 			}
 
 			var dataType = new TypeDefUser("", moduleCtx.Name.RandomName(), context.CurrentModule.CorLibTypes.GetTypeRef("System", "ValueType"));
@@ -86,7 +92,7 @@ namespace Confuser.Protections.Resources {
 			dataType.ClassLayout = new ClassLayoutUser(1, 0);
 			moduleCtx.DataType = dataType;
 			context.CurrentModule.GlobalType.NestedTypes.Add(dataType);
-			moduleCtx.Name.MarkHelper(dataType, moduleCtx.Marker);
+			moduleCtx.Name.MarkHelper(dataType, moduleCtx.Marker, (Protection)Parent);
 
 			moduleCtx.DataField = new FieldDefUser(moduleCtx.Name.RandomName(), new FieldSig(dataType.ToTypeSig())) {
 				IsStatic = true,
@@ -95,10 +101,10 @@ namespace Confuser.Protections.Resources {
 				Access = FieldAttributes.CompilerControlled
 			};
 			context.CurrentModule.GlobalType.Fields.Add(moduleCtx.DataField);
-			moduleCtx.Name.MarkHelper(moduleCtx.DataField, moduleCtx.Marker);
+			moduleCtx.Name.MarkHelper(moduleCtx.DataField, moduleCtx.Marker, (Protection)Parent);
 		}
 
-		private void MutateInitializer(REContext moduleCtx, MethodDef decomp) {
+		void MutateInitializer(REContext moduleCtx, MethodDef decomp) {
 			moduleCtx.InitMethod.Body.SimplifyMacros(moduleCtx.InitMethod.Parameters);
 			List<Instruction> instrs = moduleCtx.InitMethod.Body.Instructions.ToList();
 			for (int i = 0; i < instrs.Count; i++) {
@@ -114,8 +120,9 @@ namespace Confuser.Protections.Resources {
 						instrs.RemoveAt(i - 1);
 						instrs.RemoveAt(i - 2);
 						instrs.InsertRange(i - 2, moduleCtx.ModeHandler.EmitDecrypt(moduleCtx.InitMethod, moduleCtx, (Local)ldBlock.Operand, (Local)ldKey.Operand));
-					} else if (method.DeclaringType.Name == "Lzma" &&
-					           method.Name == "Decompress") {
+					}
+					else if (method.DeclaringType.Name == "Lzma" &&
+					         method.Name == "Decompress") {
 						instr.Operand = decomp;
 					}
 				}
@@ -130,7 +137,7 @@ namespace Confuser.Protections.Resources {
 				repl.Add(Instruction.Create(OpCodes.Dup));
 				repl.Add(Instruction.Create(OpCodes.Ldtoken, moduleCtx.DataField));
 				repl.Add(Instruction.Create(OpCodes.Call, moduleCtx.Module.Import(
-					typeof (RuntimeHelpers).GetMethod("InitializeArray"))));
+					typeof(RuntimeHelpers).GetMethod("InitializeArray"))));
 				return repl.ToArray();
 			});
 			moduleCtx.Context.Registry.GetService<IConstantService>().ExcludeMethod(moduleCtx.Context, moduleCtx.InitMethod);

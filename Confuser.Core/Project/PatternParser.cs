@@ -7,10 +7,10 @@ namespace Confuser.Core.Project {
 	///     Parser of pattern expressions.
 	/// </summary>
 	public class PatternParser {
-		private static readonly Dictionary<string, Func<PatternFunction>> fns;
-		private static readonly Dictionary<string, Func<PatternOperator>> ops;
-		private readonly PatternTokenizer tokenizer = new PatternTokenizer();
-		private PatternToken? lookAhead;
+		static readonly Dictionary<string, Func<PatternFunction>> fns;
+		static readonly Dictionary<string, Func<PatternOperator>> ops;
+		readonly PatternTokenizer tokenizer = new PatternTokenizer();
+		PatternToken? lookAhead;
 
 		static PatternParser() {
 			fns = new Dictionary<string, Func<PatternFunction>>(StringComparer.OrdinalIgnoreCase);
@@ -23,6 +23,10 @@ namespace Confuser.Core.Project {
 			fns.Add(MatchNameFunction.FnName, () => new MatchNameFunction());
 			fns.Add(MatchTypeNameFunction.FnName, () => new MatchTypeNameFunction());
 			fns.Add(MemberTypeFunction.FnName, () => new MemberTypeFunction());
+			fns.Add(IsPublicFunction.FnName, () => new IsPublicFunction());
+			fns.Add(InheritsFunction.FnName, () => new InheritsFunction());
+			fns.Add(IsTypeFunction.FnName, () => new IsTypeFunction());
+			fns.Add(HasAttrFunction.FnName, () => new HasAttrFunction());
 
 			ops = new Dictionary<string, Func<PatternOperator>>(StringComparer.OrdinalIgnoreCase);
 			ops.Add(AndOperator.OpName, () => new AndOperator());
@@ -39,6 +43,9 @@ namespace Confuser.Core.Project {
 		///     The pattern is invalid.
 		/// </exception>
 		public PatternExpression Parse(string pattern) {
+			if (pattern == null)
+				throw new ArgumentNullException("pattern");
+
 			try {
 				tokenizer.Initialize(pattern);
 				lookAhead = tokenizer.NextToken();
@@ -46,50 +53,51 @@ namespace Confuser.Core.Project {
 				if (PeekToken() != null)
 					throw new InvalidPatternException("Extra tokens beyond the end of pattern.");
 				return ret;
-			} catch (Exception ex) {
+			}
+			catch (Exception ex) {
 				if (ex is InvalidPatternException)
 					throw;
 				throw new InvalidPatternException("Invalid pattern.", ex);
 			}
 		}
 
-		private static bool IsFunction(PatternToken token) {
+		static bool IsFunction(PatternToken token) {
 			if (token.Type != TokenType.Identifier)
 				return false;
 			return fns.ContainsKey(token.Value);
 		}
 
-		private static bool IsOperator(PatternToken token) {
+		static bool IsOperator(PatternToken token) {
 			if (token.Type != TokenType.Identifier)
 				return false;
 			return ops.ContainsKey(token.Value);
 		}
 
-		private Exception UnexpectedEnd() {
+		Exception UnexpectedEnd() {
 			throw new InvalidPatternException("Unexpected end of pattern.");
 		}
 
-		private Exception MismatchParens(int position) {
+		Exception MismatchParens(int position) {
 			throw new InvalidPatternException(string.Format("Mismatched parentheses at position {0}.", position));
 		}
 
-		private Exception UnknownToken(PatternToken token) {
+		Exception UnknownToken(PatternToken token) {
 			throw new InvalidPatternException(string.Format("Unknown token '{0}' at position {1}.", token.Value, token.Position));
 		}
 
-		private Exception UnexpectedToken(PatternToken token) {
+		Exception UnexpectedToken(PatternToken token) {
 			throw new InvalidPatternException(string.Format("Unexpected token '{0}' at position {1}.", token.Value, token.Position));
 		}
 
-		private Exception UnexpectedToken(PatternToken token, char expect) {
+		Exception UnexpectedToken(PatternToken token, char expect) {
 			throw new InvalidPatternException(string.Format("Unexpected token '{0}' at position {1}. Expected '{2}'.", token.Value, token.Position, expect));
 		}
 
-		private Exception BadArgCount(PatternToken token, int expected) {
+		Exception BadArgCount(PatternToken token, int expected) {
 			throw new InvalidPatternException(string.Format("Invalid argument count for '{0}' at position {1}. Expected {2}", token.Value, token.Position, expected));
 		}
 
-		private PatternToken ReadToken() {
+		PatternToken ReadToken() {
 			if (lookAhead == null)
 				throw UnexpectedEnd();
 			PatternToken ret = lookAhead.Value;
@@ -97,11 +105,11 @@ namespace Confuser.Core.Project {
 			return ret;
 		}
 
-		private PatternToken? PeekToken() {
+		PatternToken? PeekToken() {
 			return lookAhead;
 		}
 
-		private PatternExpression ParseExpression(bool readBinOp = false) {
+		PatternExpression ParseExpression(bool readBinOp = false) {
 			PatternExpression ret;
 			PatternToken token = ReadToken();
 			switch (token.Type) {
@@ -123,7 +131,8 @@ namespace Confuser.Core.Project {
 							throw UnexpectedToken(token);
 						op.OperandA = ParseExpression();
 						ret = op;
-					} else if (IsFunction(token)) {
+					}
+					else if (IsFunction(token)) {
 						// function
 						PatternFunction fn = fns[token.Value]();
 
@@ -152,7 +161,8 @@ namespace Confuser.Core.Project {
 							throw MismatchParens(parens.Position.Value);
 
 						ret = fn;
-					} else {
+					}
+					else {
 						bool boolValue;
 						if (bool.TryParse(token.Value, out boolValue))
 							ret = new LiteralExpression(boolValue);

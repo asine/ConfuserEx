@@ -31,6 +31,14 @@ namespace Confuser.Core {
 			string tmpDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
 			string outDir = Path.Combine(tmpDir, Path.GetRandomFileName());
 			Directory.CreateDirectory(tmpDir);
+
+			for (int i = 0; i < context.OutputModules.Count; i++) {
+				string path = Path.GetFullPath(Path.Combine(tmpDir, context.OutputPaths[i]));
+				var dir = Path.GetDirectoryName(path);
+				if (!Directory.Exists(dir))
+					Directory.CreateDirectory(dir);
+				File.WriteAllBytes(path, context.OutputModules[i]);
+			}
 			File.WriteAllBytes(Path.Combine(tmpDir, fileName), module);
 
 			var proj = new ConfuserProject();
@@ -42,6 +50,9 @@ namespace Confuser.Core {
 			});
 			proj.BaseDirectory = tmpDir;
 			proj.OutputDirectory = outDir;
+			foreach (var path in context.Project.ProbePaths)
+				proj.ProbePaths.Add(path);
+			proj.ProbePaths.Add(context.Project.BaseDirectory);
 
 			PluginDiscovery discovery = null;
 			if (prot != null) {
@@ -66,7 +77,8 @@ namespace Confuser.Core {
 					Project = proj,
 					PackerInitiated = true
 				}, context.token).Wait();
-			} catch (AggregateException ex) {
+			}
+			catch (AggregateException ex) {
 				context.Logger.Error("Failed to protect packer stub.");
 				throw new ConfuserException(ex);
 			}
@@ -77,7 +89,7 @@ namespace Confuser.Core {
 	}
 
 	internal class PackerLogger : ILogger {
-		private readonly ILogger baseLogger;
+		readonly ILogger baseLogger;
 
 		public PackerLogger(ILogger baseLogger) {
 			this.baseLogger = baseLogger;
@@ -139,7 +151,7 @@ namespace Confuser.Core {
 	}
 
 	internal class PackerMarker : Marker {
-		private readonly StrongNameKey snKey;
+		readonly StrongNameKey snKey;
 
 		public PackerMarker(StrongNameKey snKey) {
 			this.snKey = snKey;
@@ -154,7 +166,7 @@ namespace Confuser.Core {
 	}
 
 	internal class PackerDiscovery : PluginDiscovery {
-		private readonly Protection prot;
+		readonly Protection prot;
 
 		public PackerDiscovery(Protection prot) {
 			this.prot = prot;

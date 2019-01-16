@@ -15,14 +15,14 @@ using dnlib.DotNet.Writer;
 namespace Confuser.Protections.ReferenceProxy {
 	internal class StrongMode : RPMode {
 		// { invoke opCode, invoke target, encoding}, { proxy field, bridge method }
-		private readonly List<FieldDesc> fieldDescs = new List<FieldDesc>();
-		private readonly Dictionary<Tuple<Code, IMethod, IRPEncoding>, Tuple<FieldDef, MethodDef>> fields = new Dictionary<Tuple<Code, IMethod, IRPEncoding>, Tuple<FieldDef, MethodDef>>();
+		readonly List<FieldDesc> fieldDescs = new List<FieldDesc>();
+		readonly Dictionary<Tuple<Code, IMethod, IRPEncoding>, Tuple<FieldDef, MethodDef>> fields = new Dictionary<Tuple<Code, IMethod, IRPEncoding>, Tuple<FieldDef, MethodDef>>();
 
-		private readonly Dictionary<IRPEncoding, InitMethodDesc[]> inits = new Dictionary<IRPEncoding, InitMethodDesc[]>();
-		private RPContext encodeCtx;
-		private Tuple<TypeDef, Func<int, int>>[] keyAttrs;
+		readonly Dictionary<IRPEncoding, InitMethodDesc[]> inits = new Dictionary<IRPEncoding, InitMethodDesc[]>();
+		RPContext encodeCtx;
+		Tuple<TypeDef, Func<int, int>>[] keyAttrs;
 
-		private static int? TraceBeginning(RPContext ctx, int index, int argCount) {
+		static int? TraceBeginning(RPContext ctx, int index, int argCount) {
 			if (ctx.BranchTargets.Contains(ctx.Body.Instructions[index]))
 				return null;
 
@@ -78,12 +78,13 @@ namespace Confuser.Protections.ReferenceProxy {
 
 			if (fallBack) {
 				ProcessBridge(ctx, instrIndex);
-			} else {
+			}
+			else {
 				ProcessInvoke(ctx, instrIndex, begin.Value);
 			}
 		}
 
-		private void ProcessBridge(RPContext ctx, int instrIndex) {
+		void ProcessBridge(RPContext ctx, int instrIndex) {
 			Instruction instr = ctx.Body.Instructions[instrIndex];
 			var target = (IMethod)instr.Operand;
 
@@ -101,7 +102,8 @@ namespace Confuser.Protections.ReferenceProxy {
 					instr.Operand = proxy.Item2;
 					return;
 				}
-			} else
+			}
+			else
 				proxy = new Tuple<FieldDef, MethodDef>(null, null);
 
 			MethodSig sig = CreateProxySignature(ctx, target, instr.OpCode.Code == Code.Newobj);
@@ -109,14 +111,14 @@ namespace Confuser.Protections.ReferenceProxy {
 
 			// Create proxy field
 			if (proxy.Item1 == null)
-				proxy = new Tuple<FieldDef,MethodDef>(
+				proxy = new Tuple<FieldDef, MethodDef>(
 					CreateField(ctx, delegateType),
 					proxy.Item2);
 
 			// Create proxy bridge
 			Debug.Assert(proxy.Item2 == null);
 
-			proxy = new Tuple<FieldDef,MethodDef>(
+			proxy = new Tuple<FieldDef, MethodDef>(
 				proxy.Item1,
 				CreateBridge(ctx, delegateType, proxy.Item1, sig));
 
@@ -125,9 +127,13 @@ namespace Confuser.Protections.ReferenceProxy {
 			// Replace instruction
 			instr.OpCode = OpCodes.Call;
 			instr.Operand = proxy.Item2;
+
+			var targetDef = target.ResolveMethodDef();
+			if (targetDef != null)
+				ctx.Context.Annotations.Set(targetDef, ReferenceProxyProtection.Targeted, ReferenceProxyProtection.Targeted);
 		}
 
-		private void ProcessInvoke(RPContext ctx, int instrIndex, int argBeginIndex) {
+		void ProcessInvoke(RPContext ctx, int instrIndex, int argBeginIndex) {
 			Instruction instr = ctx.Body.Instructions[instrIndex];
 			var target = (IMethod)instr.Operand;
 
@@ -148,7 +154,8 @@ namespace Confuser.Protections.ReferenceProxy {
 				                             new Instruction(OpCodes.Call, delegateType.FindMethod("Invoke")));
 				instr.OpCode = OpCodes.Ldsfld;
 				instr.Operand = proxy.Item1;
-			} else {
+			}
+			else {
 				Instruction argBegin = ctx.Body.Instructions[argBeginIndex];
 				ctx.Body.Instructions.Insert(argBeginIndex + 1,
 				                             new Instruction(argBegin.OpCode, argBegin.Operand));
@@ -158,9 +165,13 @@ namespace Confuser.Protections.ReferenceProxy {
 				instr.OpCode = OpCodes.Call;
 				instr.Operand = delegateType.FindMethod("Invoke");
 			}
+
+			var targetDef = target.ResolveMethodDef();
+			if (targetDef != null)
+				ctx.Context.Annotations.Set(targetDef, ReferenceProxyProtection.Targeted, ReferenceProxyProtection.Targeted);
 		}
 
-		private MethodDef CreateBridge(RPContext ctx, TypeDef delegateType, FieldDef field, MethodSig sig) {
+		MethodDef CreateBridge(RPContext ctx, TypeDef delegateType, FieldDef field, MethodSig sig) {
 			var method = new MethodDefUser(ctx.Name.RandomName(), sig);
 			method.Attributes = MethodAttributes.PrivateScope | MethodAttributes.Static;
 			method.ImplAttributes = MethodImplAttributes.Managed | MethodImplAttributes.IL;
@@ -174,13 +185,13 @@ namespace Confuser.Protections.ReferenceProxy {
 
 			delegateType.Methods.Add(method);
 
-			ctx.Context.Registry.GetService<IMarkerService>().Mark(method);
+			ctx.Context.Registry.GetService<IMarkerService>().Mark(method, ctx.Protection);
 			ctx.Name.SetCanRename(method, false);
 
 			return method;
 		}
 
-		private FieldDef CreateField(RPContext ctx, TypeDef delegateType) {
+		FieldDef CreateField(RPContext ctx, TypeDef delegateType) {
 			// Details will be filled in during metadata writing
 			TypeDef randomType;
 			do {
@@ -193,13 +204,13 @@ namespace Confuser.Protections.ReferenceProxy {
 			field.CustomAttributes.Add(new CustomAttribute(GetKeyAttr(ctx).FindInstanceConstructors().First()));
 			delegateType.Fields.Add(field);
 
-			ctx.Marker.Mark(field);
+			ctx.Marker.Mark(field, ctx.Protection);
 			ctx.Name.SetCanRename(field, false);
 
 			return field;
 		}
 
-		private TypeDef GetKeyAttr(RPContext ctx) {
+		TypeDef GetKeyAttr(RPContext ctx) {
 			if (keyAttrs == null)
 				keyAttrs = new Tuple<TypeDef, Func<int, int>>[0x10];
 
@@ -219,7 +230,7 @@ namespace Confuser.Protections.ReferenceProxy {
 					new VariableExpression { Variable = var }, new VariableExpression { Variable = result },
 					ctx.Depth, out expression, out inverse);
 
-				var expCompiled = new DMCodeGen(typeof (int), new[] { Tuple.Create("{VAR}", typeof (int)) })
+				var expCompiled = new DMCodeGen(typeof(int), new[] { Tuple.Create("{VAR}", typeof(int)) })
 					.GenerateCIL(expression)
 					.Compile<Func<int, int>>();
 
@@ -235,16 +246,17 @@ namespace Confuser.Protections.ReferenceProxy {
 
 				foreach (IDnlibDef def in injectedAttr.FindDefinitions()) {
 					if (def.Name == "GetHashCode") {
-						ctx.Name.MarkHelper(def, ctx.Marker);
+						ctx.Name.MarkHelper(def, ctx.Marker, ctx.Protection);
 						((MethodDef)def).Access = MethodAttributes.Public;
-					} else
-						ctx.Name.MarkHelper(def, ctx.Marker);
+					}
+					else
+						ctx.Name.MarkHelper(def, ctx.Marker, ctx.Protection);
 				}
 			}
 			return keyAttrs[index].Item1;
 		}
 
-		private InitMethodDesc GetInitMethod(RPContext ctx, IRPEncoding encoding) {
+		InitMethodDesc GetInitMethod(RPContext ctx, IRPEncoding encoding) {
 			InitMethodDesc[] initDescs;
 			if (!inits.TryGetValue(encoding, out initDescs))
 				inits[encoding] = initDescs = new InitMethodDesc[ctx.InitCount];
@@ -258,7 +270,7 @@ namespace Confuser.Protections.ReferenceProxy {
 				injectedMethod.Access = MethodAttributes.PrivateScope;
 				injectedMethod.Name = ctx.Name.RandomName();
 				ctx.Name.SetCanRename(injectedMethod, false);
-				ctx.Marker.Mark(injectedMethod);
+				ctx.Marker.Mark(injectedMethod, ctx.Protection);
 
 				var desc = new InitMethodDesc { Method = injectedMethod };
 
@@ -314,7 +326,7 @@ namespace Confuser.Protections.ReferenceProxy {
 
 			foreach (TypeDef delegateType in ctx.Delegates.Values) {
 				MethodDef cctor = delegateType.FindOrCreateStaticConstructor();
-				ctx.Marker.Mark(cctor);
+				ctx.Marker.Mark(cctor, ctx.Protection);
 				ctx.Name.SetCanRename(cctor, false);
 			}
 
@@ -323,9 +335,9 @@ namespace Confuser.Protections.ReferenceProxy {
 			encodeCtx = ctx;
 		}
 
-		private void EncodeField(object sender, ModuleWriterListenerEventArgs e) {
-			var writer = (ModuleWriter)sender;
-			if (e.WriterEvent == ModuleWriterEvent.MDMemberDefRidsAllocated) {
+		void EncodeField(object sender, ModuleWriterListenerEventArgs e) {
+			var writer = (ModuleWriterBase)sender;
+			if (e.WriterEvent == ModuleWriterEvent.MDMemberDefRidsAllocated && keyAttrs != null) {
 				Dictionary<TypeDef, Func<int, int>> keyFuncs = keyAttrs
 					.Where(entry => entry != null)
 					.ToDictionary(entry => entry.Item1, entry => entry.Item2);
@@ -374,8 +386,8 @@ namespace Confuser.Protections.ReferenceProxy {
 			}
 		}
 
-		private class CodeGen : CILCodeGen {
-			private readonly Instruction[] arg;
+		class CodeGen : CILCodeGen {
+			readonly Instruction[] arg;
 
 			public CodeGen(Instruction[] arg, MethodDef method, IList<Instruction> instrs)
 				: base(method, instrs) {
@@ -385,13 +397,14 @@ namespace Confuser.Protections.ReferenceProxy {
 			protected override void LoadVar(Variable var) {
 				if (var.Name == "{RESULT}") {
 					foreach (Instruction instr in arg)
-						base.Emit(instr);
-				} else
+						Emit(instr);
+				}
+				else
 					base.LoadVar(var);
 			}
 		}
 
-		private class FieldDesc {
+		class FieldDesc {
 			public FieldDef Field;
 			public InitMethodDesc InitDesc;
 			public IMethod Method;
@@ -399,7 +412,7 @@ namespace Confuser.Protections.ReferenceProxy {
 			public byte OpKey;
 		}
 
-		private class InitMethodDesc {
+		class InitMethodDesc {
 			public IRPEncoding Encoding;
 			public MethodDef Method;
 			public int OpCodeIndex;

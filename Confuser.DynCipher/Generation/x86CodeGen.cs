@@ -7,8 +7,8 @@ using Confuser.DynCipher.AST;
 
 namespace Confuser.DynCipher.Generation {
 	public class x86CodeGen {
-		private List<x86Instruction> instrs;
-		private bool[] usedRegs;
+		List<x86Instruction> instrs;
+		bool[] usedRegs;
 
 		public IList<x86Instruction> Instructions {
 			get { return instrs; }
@@ -27,14 +27,15 @@ namespace Confuser.DynCipher.Generation {
 
 			try {
 				return ((x86RegisterOperand)Emit(expression, loadArg)).Register;
-			} catch (Exception ex) {
+			}
+			catch (Exception ex) {
 				if (ex.Message == "Register overflowed.")
 					return null;
 				throw;
 			}
 		}
 
-		private x86Register GetFreeRegister() {
+		x86Register GetFreeRegister() {
 			for (int i = 0; i < 8; i++)
 				if (!usedRegs[i])
 					return (x86Register)i;
@@ -42,17 +43,17 @@ namespace Confuser.DynCipher.Generation {
 			throw new Exception("Register overflowed.");
 		}
 
-		private void TakeRegister(x86Register reg) {
+		void TakeRegister(x86Register reg) {
 			usedRegs[(int)reg] = true;
 			if ((int)reg > MaxUsedRegister)
 				MaxUsedRegister = (int)reg;
 		}
 
-		private void ReleaseRegister(x86Register reg) {
+		void ReleaseRegister(x86Register reg) {
 			usedRegs[(int)reg] = false;
 		}
 
-		private x86Register Normalize(x86Instruction instr) {
+		x86Register Normalize(x86Instruction instr) {
 			if (instr.Operands.Length == 2 &&
 			    instr.Operands[0] is x86ImmediateOperand &&
 			    instr.Operands[1] is x86ImmediateOperand) {
@@ -133,7 +134,7 @@ namespace Confuser.DynCipher.Generation {
 			return ((x86RegisterOperand)instr.Operands[0]).Register;
 		}
 
-		private Ix86Operand Emit(Expression exp, Func<Variable, x86Register, IEnumerable<x86Instruction>> loadArg) {
+		Ix86Operand Emit(Expression exp, Func<Variable, x86Register, IEnumerable<x86Instruction>> loadArg) {
 			if (exp is BinOpExpression) {
 				var binOp = (BinOpExpression)exp;
 				x86Register reg;

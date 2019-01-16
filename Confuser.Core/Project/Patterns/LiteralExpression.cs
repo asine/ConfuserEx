@@ -31,7 +31,8 @@ namespace Confuser.Core.Project.Patterns {
 			if (Literal is bool) {
 				var value = (bool)Literal;
 				tokens.Add(new PatternToken(TokenType.Identifier, value.ToString().ToLowerInvariant()));
-			} else
+			}
+			else
 				tokens.Add(new PatternToken(TokenType.Literal, Literal.ToString()));
 		}
 	}

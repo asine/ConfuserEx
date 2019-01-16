@@ -14,7 +14,7 @@ namespace Confuser.Core {
 		/// <summary>
 		///     Prevents a default instance of the <see cref="NullLogger" /> class from being created.
 		/// </summary>
-		private NullLogger() { }
+		NullLogger() { }
 
 		/// <inheritdoc />
 		public void Debug(string msg) { }

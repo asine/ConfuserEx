@@ -14,7 +14,9 @@ using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnlib.DotNet.MD;
 using dnlib.DotNet.Writer;
+using dnlib.PE;
 using FileAttributes = dnlib.DotNet.FileAttributes;
+using SR = System.Reflection;
 
 namespace Confuser.Protections {
 	internal class Compressor : Packer {
@@ -39,9 +41,7 @@ namespace Confuser.Protections {
 			get { return _FullId; }
 		}
 
-		protected override void Initialize(ConfuserContext context) {
-			//context.Registry.RegisterService(_ServiceId, typeof(IControlFlowService), this);
-		}
+		protected override void Initialize(ConfuserContext context) { }
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {
 			pipeline.InsertPreStage(PipelineStage.WriteModule, new ExtractPhase(this));
@@ -55,8 +55,18 @@ namespace Confuser.Protections {
 			}
 
 			ModuleDefMD originModule = context.Modules[ctx.ModuleIndex];
+			ctx.OriginModuleDef = originModule;
+
 			var stubModule = new ModuleDefUser(ctx.ModuleName, originModule.Mvid, originModule.CorLibTypes.AssemblyRef);
-			ctx.Assembly.Modules.Insert(0, stubModule);
+			if (ctx.CompatMode) {
+				var assembly = new AssemblyDefUser(originModule.Assembly);
+				assembly.Name += ".cr";
+				assembly.Modules.Add(stubModule);
+			}
+			else {
+				ctx.Assembly.Modules.Insert(0, stubModule);
+				ImportAssemblyTypeReferences(originModule, stubModule);
+			}
 			stubModule.Characteristics = originModule.Characteristics;
 			stubModule.Cor20HeaderFlags = originModule.Cor20HeaderFlags;
 			stubModule.Cor20HeaderRuntimeVersion = originModule.Cor20HeaderRuntimeVersion;
@@ -78,21 +88,46 @@ namespace Confuser.Protections {
 					StrongNameKey = snKey
 				});
 				context.CheckCancellation();
-				base.ProtectStub(context, context.OutputPaths[ctx.ModuleIndex], ms.ToArray(), snKey, new StubProtection(ctx));
+				ProtectStub(context, context.OutputPaths[ctx.ModuleIndex], ms.ToArray(), snKey, new StubProtection(ctx, originModule));
 			}
 		}
 
-		private void PackModules(ConfuserContext context, CompressorContext compCtx, ModuleDef stubModule, ICompressionService comp, RandomGenerator random) {
+		static string GetId(byte[] module) {
+			var md = MetaDataCreator.CreateMetaData(new PEImage(module));
+			var assemblyRow = md.TablesStream.ReadAssemblyRow(1);
+			var assembly = new AssemblyNameInfo();
+			assembly.Name = md.StringsStream.ReadNoNull(assemblyRow.Name);
+			assembly.Culture = md.StringsStream.ReadNoNull(assemblyRow.Locale);
+			assembly.PublicKeyOrToken = new PublicKey(md.BlobStream.Read(assemblyRow.PublicKey));
+			assembly.HashAlgId = (AssemblyHashAlgorithm)assemblyRow.HashAlgId;
+			assembly.Version = new Version(assemblyRow.MajorVersion, assemblyRow.MinorVersion, assemblyRow.BuildNumber, assemblyRow.RevisionNumber);
+			assembly.Attributes = (AssemblyAttributes)assemblyRow.Flags;
+			return GetId(assembly);
+		}
+
+		static string GetId(IAssembly assembly) {
+			return new SR.AssemblyName(assembly.FullName).FullName.ToUpperInvariant();
+		}
+
+		void PackModules(ConfuserContext context, CompressorContext compCtx, ModuleDef stubModule, ICompressionService comp, RandomGenerator random) {
 			int maxLen = 0;
 			var modules = new Dictionary<string, byte[]>();
 			for (int i = 0; i < context.OutputModules.Count; i++) {
 				if (i == compCtx.ModuleIndex)
 					continue;
 
-				string fullName = context.Modules[i].Assembly.FullName;
-				modules.Add(fullName, context.OutputModules[i]);
+				string id = GetId(context.Modules[i].Assembly);
+				modules.Add(id, context.OutputModules[i]);
 
-				int strLen = Encoding.UTF8.GetByteCount(fullName);
+				int strLen = Encoding.UTF8.GetByteCount(id);
+				if (strLen > maxLen)
+					maxLen = strLen;
+			}
+			foreach (var extModule in context.ExternalModules) {
+				var name = GetId(extModule).ToUpperInvariant();
+				modules.Add(name, extModule);
+
+				int strLen = Encoding.UTF8.GetByteCount(name);
 				if (strLen > maxLen)
 					maxLen = strLen;
 			}
@@ -128,7 +163,7 @@ namespace Confuser.Protections {
 			context.Logger.EndProgress();
 		}
 
-		private void InjectData(ModuleDef stubModule, MethodDef method, byte[] data) {
+		void InjectData(ModuleDef stubModule, MethodDef method, byte[] data) {
 			var dataType = new TypeDefUser("", "DataType", stubModule.CorLibTypes.GetTypeRef("System", "ValueType"));
 			dataType.Layout = TypeAttributes.ExplicitLayout;
 			dataType.Visibility = TypeAttributes.NestedPrivate;
@@ -150,16 +185,18 @@ namespace Confuser.Protections {
 				repl.Add(Instruction.Create(OpCodes.Dup));
 				repl.Add(Instruction.Create(OpCodes.Ldtoken, dataField));
 				repl.Add(Instruction.Create(OpCodes.Call, stubModule.Import(
-					typeof (RuntimeHelpers).GetMethod("InitializeArray"))));
+					typeof(RuntimeHelpers).GetMethod("InitializeArray"))));
 				return repl.ToArray();
 			});
 		}
 
-		private void InjectStub(ConfuserContext context, CompressorContext compCtx, ProtectionParameters parameters, ModuleDef stubModule) {
+		void InjectStub(ConfuserContext context, CompressorContext compCtx, ProtectionParameters parameters, ModuleDef stubModule) {
 			var rt = context.Registry.GetService<IRuntimeService>();
 			RandomGenerator random = context.Registry.GetService<IRandomService>().GetRandomGenerator(Id);
 			var comp = context.Registry.GetService<ICompressionService>();
-			IEnumerable<IDnlibDef> defs = InjectHelper.Inject(rt.GetRuntimeType("Confuser.Runtime.Compressor"), stubModule.GlobalType, stubModule);
+
+			var rtType = rt.GetRuntimeType(compCtx.CompatMode ? "Confuser.Runtime.CompressorCompat" : "Confuser.Runtime.Compressor");
+			IEnumerable<IDnlibDef> defs = InjectHelper.Inject(rtType, stubModule.GlobalType, stubModule);
 
 			switch (parameters.GetParameter(context, context.CurrentModule, "key", Mode.Normal)) {
 				case Mode.Normal:
@@ -178,6 +215,19 @@ namespace Confuser.Protections {
 			// Main
 			MethodDef entryPoint = defs.OfType<MethodDef>().Single(method => method.Name == "Main");
 			stubModule.EntryPoint = entryPoint;
+
+			if (compCtx.EntryPoint.HasAttribute("System.STAThreadAttribute")) {
+				var attrType = stubModule.CorLibTypes.GetTypeRef("System", "STAThreadAttribute");
+				var ctorSig = MethodSig.CreateInstance(stubModule.CorLibTypes.Void);
+				entryPoint.CustomAttributes.Add(new CustomAttribute(
+					new MemberRefUser(stubModule, ".ctor", ctorSig, attrType)));
+			}
+			else if (compCtx.EntryPoint.HasAttribute("System.MTAThreadAttribute")) {
+				var attrType = stubModule.CorLibTypes.GetTypeRef("System", "MTAThreadAttribute");
+				var ctorSig = MethodSig.CreateInstance(stubModule.CorLibTypes.Void);
+				entryPoint.CustomAttributes.Add(new CustomAttribute(
+					new MemberRefUser(stubModule, ".ctor", ctorSig, attrType)));
+			}
 
 			uint seed = random.NextUInt32();
 			compCtx.OriginModule = context.OutputModules[compCtx.ModuleIndex];
@@ -211,8 +261,9 @@ namespace Confuser.Protections {
 						instrs.RemoveAt(i - 1);
 						instrs.RemoveAt(i - 2);
 						instrs.InsertRange(i - 2, compCtx.Deriver.EmitDerivation(decrypter, context, (Local)ldDst.Operand, (Local)ldSrc.Operand));
-					} else if (method.DeclaringType.Name == "Lzma" &&
-					           method.Name == "Decompress") {
+					}
+					else if (method.DeclaringType.Name == "Lzma" &&
+					         method.Name == "Decompress") {
 						MethodDef decomp = comp.GetRuntimeDecompressor(stubModule, member => { });
 						instr.Operand = decomp;
 					}
@@ -226,8 +277,20 @@ namespace Confuser.Protections {
 			PackModules(context, compCtx, stubModule, comp, random);
 		}
 
-		private class KeyInjector : IModuleWriterListener {
-			private readonly CompressorContext ctx;
+		void ImportAssemblyTypeReferences(ModuleDef originModule, ModuleDef stubModule) {
+			var assembly = stubModule.Assembly;
+			foreach (var ca in assembly.CustomAttributes) {
+				if (ca.AttributeType.Scope == originModule)
+					ca.Constructor = (ICustomAttributeType)stubModule.Import(ca.Constructor);
+			}
+			foreach (var ca in assembly.DeclSecurities.SelectMany(declSec => declSec.CustomAttributes)) {
+				if (ca.AttributeType.Scope == originModule)
+					ca.Constructor = (ICustomAttributeType)stubModule.Import(ca.Constructor);
+			}
+		}
+
+		class KeyInjector : IModuleWriterListener {
+			readonly CompressorContext ctx;
 
 			public KeyInjector(CompressorContext ctx) {
 				this.ctx = ctx;
@@ -242,7 +305,8 @@ namespace Confuser.Protections {
 					uint sigToken = 0x11000000 | sigRid;
 					ctx.KeyToken = sigToken;
 					MutationHelper.InjectKey(writer.Module.EntryPoint, 2, (int)sigToken);
-				} else if (evt == ModuleWriterEvent.MDBeginAddResources) {
+				}
+				else if (evt == ModuleWriterEvent.MDBeginAddResources && !ctx.CompatMode) {
 					// Compute hash
 					byte[] hash = SHA1.Create().ComputeHash(ctx.OriginModule);
 					uint hashBlob = writer.MetaData.BlobHeap.Add(hash);
@@ -258,6 +322,16 @@ namespace Confuser.Protections {
 					MDTable<RawManifestResourceRow> resTbl = writer.MetaData.TablesHeap.ManifestResourceTable;
 					foreach (var resource in ctx.ManifestResources)
 						resTbl.Add(new RawManifestResourceRow(resource.Item1, resource.Item2, writer.MetaData.StringsHeap.Add(resource.Item3), impl));
+
+					// Add exported types
+					var exTbl = writer.MetaData.TablesHeap.ExportedTypeTable;
+					foreach (var type in ctx.OriginModuleDef.GetTypes()) {
+						if (!type.IsVisibleOutside())
+							continue;
+						exTbl.Add(new RawExportedTypeRow((uint)type.Attributes, 0,
+						                                 writer.MetaData.StringsHeap.Add(type.Name),
+						                                 writer.MetaData.StringsHeap.Add(type.Namespace), impl));
+					}
 				}
 			}
 		}

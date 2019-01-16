@@ -4,7 +4,7 @@ using Confuser.DynCipher.AST;
 
 namespace Confuser.DynCipher.Transforms {
 	internal class ExpansionTransform {
-		private static bool ProcessStatement(Statement st, StatementBlock block) {
+		static bool ProcessStatement(Statement st, StatementBlock block) {
 			if (st is AssignmentStatement) {
 				var assign = (AssignmentStatement)st;
 				if (assign.Value is BinOpExpression) {

@@ -13,12 +13,12 @@ using Ookii.Dialogs.Wpf;
 
 namespace ConfuserEx.ViewModel {
 	public class AppVM : ViewModelBase {
-		private readonly IList<TabViewModel> tabs = new ObservableCollection<TabViewModel>();
-		private string fileName;
-		private bool navDisabled;
-		private bool firstSaved = false;
+		readonly IList<TabViewModel> tabs = new ObservableCollection<TabViewModel>();
+		string fileName;
+		bool navDisabled;
+		bool firstSaved;
 
-		private ProjectVM proj;
+		ProjectVM proj;
 
 		public bool NavigationDisabled {
 			get { return navDisabled; }
@@ -72,18 +72,20 @@ namespace ConfuserEx.ViewModel {
 		}
 
 		public ICommand Decode {
-			get { return new RelayCommand(() => { MessageBox.Show("Not yet implemented!", "ConfuserEx", MessageBoxButton.OK, MessageBoxImage.Information); }, () => !NavigationDisabled); }
+			get { return new RelayCommand(() => new StackTraceDecoder { Owner = Application.Current.MainWindow }.ShowDialog(), () => !NavigationDisabled); }
 		}
 
 		public bool OnWindowClosing() {
 			return PromptSave();
 		}
 
-		private bool SaveProj() {
+		bool SaveProj() {
 			if (!firstSaved || !File.Exists(FileName)) {
 				var sfd = new VistaSaveFileDialog();
 				sfd.FileName = FileName;
 				sfd.Filter = "ConfuserEx Projects (*.crproj)|*.crproj|All Files (*.*)|*.*";
+				sfd.DefaultExt = ".crproj";
+				sfd.AddExtension = true;
 				if (!(sfd.ShowDialog(Application.Current.MainWindow) ?? false) || sfd.FileName == null)
 					return false;
 				FileName = sfd.FileName;
@@ -95,7 +97,7 @@ namespace ConfuserEx.ViewModel {
 			return true;
 		}
 
-		private bool PromptSave() {
+		bool PromptSave() {
 			if (!Project.IsModified)
 				return true;
 			switch (MessageBox.Show("The current project has unsaved changes. Do you want to save them?", "ConfuserEx", MessageBoxButton.YesNoCancel, MessageBoxImage.Question)) {
@@ -109,15 +111,15 @@ namespace ConfuserEx.ViewModel {
 			return false;
 		}
 
-		private void NewProj() {
+		void NewProj() {
 			if (!PromptSave())
 				return;
 
-			Project = new ProjectVM(new ConfuserProject());
+			Project = new ProjectVM(new ConfuserProject(), null);
 			FileName = "Unnamed.crproj";
 		}
 
-		private void OpenProj() {
+		void OpenProj() {
 			if (!PromptSave())
 				return;
 
@@ -130,17 +132,35 @@ namespace ConfuserEx.ViewModel {
 					xmlDoc.Load(fileName);
 					var proj = new ConfuserProject();
 					proj.Load(xmlDoc);
-					Project = new ProjectVM(proj);
+					Project = new ProjectVM(proj, fileName);
 					FileName = fileName;
-				} catch {
+				}
+				catch {
 					MessageBox.Show("Invalid project!", "ConfuserEx", MessageBoxButton.OK, MessageBoxImage.Error);
 				}
 			}
 		}
 
-		private void OnProjectPropertyChanged(object sender, PropertyChangedEventArgs e) {
+		void OnProjectPropertyChanged(object sender, PropertyChangedEventArgs e) {
 			if (e.PropertyName == "IsModified")
 				OnPropertyChanged("Title");
+		}
+
+		protected override void OnPropertyChanged(string property) {
+			base.OnPropertyChanged(property);
+			if (property == "Project")
+				LoadPlugins();
+		}
+
+		void LoadPlugins() {
+			foreach (var plugin in Project.Plugins) {
+				try {
+					ComponentDiscovery.LoadComponents(Project.Protections, Project.Packers, plugin.Item);
+				}
+				catch {
+					MessageBox.Show("Failed to load plugin '" + plugin + "'.");
+				}
+			}
 		}
 	}
 }

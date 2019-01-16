@@ -40,12 +40,12 @@ namespace Confuser.Protections {
 		}
 
 		protected override void Initialize(ConfuserContext context) {
-			context.Registry.RegisterService(_ServiceId, typeof (IConstantService), this);
+			context.Registry.RegisterService(_ServiceId, typeof(IConstantService), this);
 		}
 
 		protected override void PopulatePipeline(ProtectionPipeline pipeline) {
-			pipeline.InsertPostStage(PipelineStage.BeginModule, new InjectPhase(this));
-			pipeline.InsertPreStage(PipelineStage.OptimizeMethods, new EncodePhase(this));
+			pipeline.InsertPreStage(PipelineStage.ProcessModule, new InjectPhase(this));
+			pipeline.InsertPostStage(PipelineStage.ProcessModule, new EncodePhase(this));
 		}
 	}
 }

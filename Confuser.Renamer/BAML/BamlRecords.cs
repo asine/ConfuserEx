@@ -79,7 +79,7 @@ namespace Confuser.Renamer.BAML {
 			Debug.Assert(reader.BaseStream.Position - pos == size);
 		}
 
-		private int SizeofEncodedInt(int val) {
+		int SizeofEncodedInt(int val) {
 			if ((val & ~0x7F) == 0) {
 				return 1;
 			}
@@ -363,7 +363,7 @@ namespace Confuser.Renamer.BAML {
 			writer.Write(SharedSet);
 		}
 
-		private static void NavigateTree(BamlDocument doc, BamlRecordType start, BamlRecordType end, ref int index) {
+		static void NavigateTree(BamlDocument doc, BamlRecordType start, BamlRecordType end, ref int index) {
 			index++;
 			while (true) //Assume there alway is a end
 			{
@@ -395,6 +395,24 @@ namespace Confuser.Renamer.BAML {
 			writer.Write(TypeId);
 			writer.Write(AssemblyId);
 			writer.Write(TypeFullName);
+		}
+	}
+
+	internal class TypeSerializerInfoRecord : TypeInfoRecord {
+		public override BamlRecordType Type {
+			get { return BamlRecordType.TypeSerializerInfo; }
+		}
+
+		public ushort SerializerTypeId { get; set; }
+
+		protected override void ReadData(BamlBinaryReader reader, int size) {
+			base.ReadData(reader, size);
+			SerializerTypeId = reader.ReadUInt16();
+		}
+
+		protected override void WriteData(BamlBinaryWriter writer) {
+			base.WriteData(writer);
+			writer.Write(SerializerTypeId);
 		}
 	}
 
@@ -798,7 +816,7 @@ namespace Confuser.Renamer.BAML {
 			writer.Write(SharedSet);
 		}
 
-		private static void NavigateTree(BamlDocument doc, BamlRecordType start, BamlRecordType end, ref int index) {
+		static void NavigateTree(BamlDocument doc, BamlRecordType start, BamlRecordType end, ref int index) {
 			index++;
 			while (true) {
 				if (doc[index].Type == start)
@@ -915,7 +933,7 @@ namespace Confuser.Renamer.BAML {
 	}
 
 	internal class DeferableContentStartRecord : BamlRecord, IBamlDeferRecord {
-		private long pos;
+		long pos;
 		internal uint size = 0xffffffff;
 
 		public override BamlRecordType Type {
@@ -1037,12 +1055,12 @@ namespace Confuser.Renamer.BAML {
 		public string RuntimeName { get; set; }
 
 		public override void Read(BamlBinaryReader reader) {
-			base.TypeId = reader.ReadUInt16();
+			TypeId = reader.ReadUInt16();
 			RuntimeName = reader.ReadString();
 		}
 
 		public override void Write(BamlBinaryWriter writer) {
-			writer.Write(base.TypeId);
+			writer.Write(TypeId);
 			if (RuntimeName != null) {
 				writer.Write(RuntimeName);
 			}

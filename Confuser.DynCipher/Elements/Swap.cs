@@ -19,7 +19,7 @@ namespace Confuser.DynCipher.Elements {
 			Key = random.NextUInt32() | 1;
 		}
 
-		private void EmitCore(CipherGenContext context) {
+		void EmitCore(CipherGenContext context) {
 			Expression a = context.GetDataExpression(DataIndexes[0]);
 			Expression b = context.GetDataExpression(DataIndexes[1]);
 			VariableExpression tmp;
@@ -41,7 +41,8 @@ namespace Confuser.DynCipher.Elements {
 						Target = b
 					});
 				}
-			} else {
+			}
+			else {
 				var mask = (LiteralExpression)Mask;
 				var notMask = (LiteralExpression)~Mask;
 				/*  t = (a & mask) * k;

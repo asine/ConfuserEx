@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Schema;
@@ -21,6 +22,11 @@ namespace Confuser.Core.Project {
 		///     Gets the path to the module.
 		/// </summary>
 		public string Path { get; set; }
+
+		/// <summary>
+		///     Indicates whether this module is external and should not be obfuscated.
+		/// </summary>
+		public bool IsExternal { get; set; }
 
 		/// <summary>
 		///     Gets or sets the path to the strong name private key for signing.
@@ -56,6 +62,20 @@ namespace Confuser.Core.Project {
 		}
 
 		/// <summary>
+		///     Read the raw bytes of the module from the path.
+		/// </summary>
+		/// <param name="basePath">
+		///     The base path for the relative module path,
+		///     or null if the module path is absolute or relative to current directory.
+		/// </param>
+		/// <returns>The loaded module.</returns>
+		public byte[] LoadRaw(string basePath) {
+			if (basePath == null)
+				return File.ReadAllBytes(Path);
+			return File.ReadAllBytes(System.IO.Path.Combine(basePath, Path));
+		}
+
+		/// <summary>
 		///     Saves the module description as XML element.
 		/// </summary>
 		/// <param name="xmlDoc">The root XML document.</param>
@@ -67,6 +87,11 @@ namespace Confuser.Core.Project {
 			nameAttr.Value = Path;
 			elem.Attributes.Append(nameAttr);
 
+			if (IsExternal) {
+				XmlAttribute extAttr = xmlDoc.CreateAttribute("external");
+				extAttr.Value = IsExternal.ToString();
+				elem.Attributes.Append(extAttr);
+			}
 			if (SNKeyPath != null) {
 				XmlAttribute snKeyAttr = xmlDoc.CreateAttribute("snKey");
 				snKeyAttr.Value = SNKeyPath;
@@ -91,6 +116,11 @@ namespace Confuser.Core.Project {
 		/// <param name="elem">The serialized module description.</param>
 		internal void Load(XmlElement elem) {
 			Path = elem.Attributes["path"].Value;
+
+			if (elem.Attributes["external"] != null)
+				IsExternal = bool.Parse(elem.Attributes["external"].Value);
+			else
+				IsExternal = false;
 
 			if (elem.Attributes["snKey"] != null)
 				SNKeyPath = elem.Attributes["snKey"].Value.NullIfEmpty();
@@ -117,6 +147,21 @@ namespace Confuser.Core.Project {
 		public override string ToString() {
 			return Path;
 		}
+
+		/// <summary>
+		///     Clones this instance.
+		/// </summary>
+		/// <returns>A duplicated module.</returns>
+		public ProjectModule Clone() {
+			var ret = new ProjectModule();
+			ret.Path = Path;
+			ret.IsExternal = IsExternal;
+			ret.SNKeyPath = SNKeyPath;
+			ret.SNKeyPassword = SNKeyPassword;
+			foreach (var r in Rules)
+				ret.Rules.Add(r.Clone());
+			return ret;
+		}
 	}
 
 	/// <summary>
@@ -140,6 +185,16 @@ namespace Confuser.Core.Project {
 	/// <typeparam name="T"><see cref="Protection" /> or <see cref="Packer" /></typeparam>
 	public class SettingItem<T> : Dictionary<string, string> {
 		/// <summary>
+		/// Initialize this setting item instance
+		/// </summary>
+		/// <param name="id">The protection id</param>
+		/// <param name="action">The action to take</param>
+		public SettingItem(string id = null, SettingItemAction action = SettingItemAction.Add) {
+			Id = id;
+			Action = action;
+		}
+
+		/// <summary>
 		///     The identifier of component
 		/// </summary>
 		/// <value>The identifier of component.</value>
@@ -158,7 +213,7 @@ namespace Confuser.Core.Project {
 		/// <param name="xmlDoc">The root XML document.</param>
 		/// <returns>The setting module description.</returns>
 		internal XmlElement Save(XmlDocument xmlDoc) {
-			XmlElement elem = xmlDoc.CreateElement(typeof (T) == typeof (Packer) ? "packer" : "protection", ConfuserProject.Namespace);
+			XmlElement elem = xmlDoc.CreateElement(typeof(T) == typeof(Packer) ? "packer" : "protection", ConfuserProject.Namespace);
 
 			XmlAttribute idAttr = xmlDoc.CreateAttribute("id");
 			idAttr.Value = Id;
@@ -194,13 +249,24 @@ namespace Confuser.Core.Project {
 			Id = elem.Attributes["id"].Value;
 
 			if (elem.Attributes["action"] != null)
-				Action = (SettingItemAction)Enum.Parse(typeof (SettingItemAction), elem.Attributes["action"].Value, true);
+				Action = (SettingItemAction)Enum.Parse(typeof(SettingItemAction), elem.Attributes["action"].Value, true);
 			else
 				Action = SettingItemAction.Add;
 
 			Clear();
 			foreach (XmlElement i in elem.ChildNodes.OfType<XmlElement>())
 				Add(i.Attributes["name"].Value, i.Attributes["value"].Value);
+		}
+
+		/// <summary>
+		///     Clones this instance.
+		/// </summary>
+		/// <returns>A duplicated setting item.</returns>
+		public SettingItem<T> Clone() {
+			var item = new SettingItem<T>(Id, Action);
+			foreach (var entry in this)
+				item.Add(entry.Key, entry.Value);
+			return item;
 		}
 	}
 
@@ -209,6 +275,18 @@ namespace Confuser.Core.Project {
 	///     A rule that control how <see cref="Protection" />s are applied to module
 	/// </summary>
 	public class Rule : List<SettingItem<Protection>> {
+		/// <summary>
+		/// Initialize this rule instance
+		/// </summary>
+		/// <param name="pattern">The pattern</param>
+		/// <param name="preset">The preset</param>
+		/// <param name="inherit">Inherits protection</param>
+		public Rule(string pattern = "true", ProtectionPreset preset = ProtectionPreset.None, bool inherit = false) {
+			Pattern = pattern;
+			Preset = preset;
+			Inherit = inherit;
+		}
+
 		/// <summary>
 		///     Gets or sets the pattern that determine the target components of the rule.
 		/// </summary>
@@ -265,7 +343,7 @@ namespace Confuser.Core.Project {
 			Pattern = elem.Attributes["pattern"].Value;
 
 			if (elem.Attributes["preset"] != null)
-				Preset = (ProtectionPreset)Enum.Parse(typeof (ProtectionPreset), elem.Attributes["preset"].Value, true);
+				Preset = (ProtectionPreset)Enum.Parse(typeof(ProtectionPreset), elem.Attributes["preset"].Value, true);
 			else
 				Preset = ProtectionPreset.None;
 
@@ -336,7 +414,7 @@ namespace Confuser.Core.Project {
 		/// <summary>
 		///     The schema of project XML.
 		/// </summary>
-		public static readonly XmlSchema Schema = XmlSchema.Read(typeof (ConfuserProject).Assembly.GetManifestResourceStream("Confuser.Core.Project.ConfuserPrj.xsd"), null);
+		public static readonly XmlSchema Schema = XmlSchema.Read(typeof(ConfuserProject).Assembly.GetManifestResourceStream("Confuser.Core.Project.ConfuserPrj.xsd"), null);
 
 		/// <summary>
 		///     Initializes a new instance of the <see cref="ConfuserProject" /> class.
@@ -435,13 +513,13 @@ namespace Confuser.Core.Project {
 				elem.AppendChild(i.Save(xmlDoc));
 
 			foreach (string i in ProbePaths) {
-				XmlElement path = xmlDoc.CreateElement("probePath", ConfuserProject.Namespace);
+				XmlElement path = xmlDoc.CreateElement("probePath", Namespace);
 				path.InnerText = i;
 				elem.AppendChild(path);
 			}
 
 			foreach (string i in PluginPaths) {
-				XmlElement path = xmlDoc.CreateElement("plugin", ConfuserProject.Namespace);
+				XmlElement path = xmlDoc.CreateElement("plugin", Namespace);
 				path.InnerText = i;
 				elem.AppendChild(path);
 			}
@@ -493,19 +571,43 @@ namespace Confuser.Core.Project {
 					var rule = new Rule();
 					rule.Load(i);
 					Rules.Add(rule);
-				} else if (i.Name == "packer") {
+				}
+				else if (i.Name == "packer") {
 					Packer = new SettingItem<Packer>();
 					Packer.Load(i);
-				} else if (i.Name == "probePath") {
+				}
+				else if (i.Name == "probePath") {
 					ProbePaths.Add(i.InnerText);
-				} else if (i.Name == "plugin") {
+				}
+				else if (i.Name == "plugin") {
 					PluginPaths.Add(i.InnerText);
-				} else {
+				}
+				else {
 					var asm = new ProjectModule();
 					asm.Load(i);
 					Add(asm);
 				}
 			}
+		}
+
+		/// <summary>
+		///     Clones this instance.
+		/// </summary>
+		/// <returns>A duplicated project.</returns>
+		public ConfuserProject Clone() {
+			var ret = new ConfuserProject();
+			ret.Seed = Seed;
+			ret.Debug = Debug;
+			ret.OutputDirectory = OutputDirectory;
+			ret.BaseDirectory = BaseDirectory;
+			ret.Packer = Packer == null ? null : Packer.Clone();
+			ret.ProbePaths = new List<string>(ProbePaths);
+			ret.PluginPaths = new List<string>(PluginPaths);
+			foreach (var module in this)
+				ret.Add(module.Clone());
+			foreach (var r in Rules)
+				ret.Rules.Add(r);
+			return ret;
 		}
 	}
 }

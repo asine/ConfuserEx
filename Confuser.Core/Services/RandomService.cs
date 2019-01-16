@@ -11,12 +11,12 @@ namespace Confuser.Core.Services {
 		/// <summary>
 		///     The prime numbers used for generation
 		/// </summary>
-		private static readonly byte[] primes = { 7, 11, 23, 37, 43, 59, 71 };
+		static readonly byte[] primes = { 7, 11, 23, 37, 43, 59, 71 };
 
-		private readonly SHA256Managed sha256 = new SHA256Managed();
-		private int mixIndex;
-		private byte[] state; //32 bytes
-		private int stateFilled;
+		readonly SHA256Managed sha256 = new SHA256Managed();
+		int mixIndex;
+		byte[] state; //32 bytes
+		int stateFilled;
 
 		/// <summary>
 		///     Initializes a new instance of the <see cref="RandomGenerator" /> class.
@@ -50,7 +50,7 @@ namespace Confuser.Core.Services {
 		/// <summary>
 		///     Refills the state buffer.
 		/// </summary>
-		private void NextState() {
+		void NextState() {
 			for (int i = 0; i < 32; i++)
 				state[i] ^= primes[mixIndex = (mixIndex + 1) % primes.Length];
 			state = sha256.ComputeHash(state);
@@ -84,7 +84,8 @@ namespace Confuser.Core.Services {
 					offset += stateFilled;
 					length -= stateFilled;
 					stateFilled = 0;
-				} else {
+				}
+				else {
 					Buffer.BlockCopy(state, 32 - stateFilled, buffer, offset, length);
 					stateFilled -= length;
 					length = 0;
@@ -192,7 +193,7 @@ namespace Confuser.Core.Services {
 	///     Implementation of <see cref="IRandomService" />.
 	/// </summary>
 	internal class RandomService : IRandomService {
-		private readonly byte[] seed; //32 bytes
+		readonly byte[] seed; //32 bytes
 
 		/// <summary>
 		///     Initializes a new instance of the <see cref="RandomService" /> class.

@@ -6,7 +6,7 @@ using System.Windows.Media;
 namespace ConfuserEx {
 	public class BrushToColorConverter : IValueConverter {
 		public static readonly BrushToColorConverter Instance = new BrushToColorConverter();
-		private BrushToColorConverter() { }
+		BrushToColorConverter() { }
 
 		public object Convert(object value, Type targetType, object parameter, CultureInfo culture) {
 			var brush = value as SolidColorBrush;

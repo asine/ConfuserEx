@@ -1,51 +1,74 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Confuser.Core;
 using Confuser.Renamer.References;
 using dnlib.DotNet;
 
 namespace Confuser.Renamer.Analyzers {
 	internal class VTableAnalyzer : IRenamer {
-		public void Analyze(ConfuserContext context, INameService service, IDnlibDef def) {
-			var method = def as MethodDef;
-			if (method == null || !method.IsVirtual)
-				return;
+		public void Analyze(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
+			VTable vTbl;
 
-			VTable vTbl = service.GetVTables()[method.DeclaringType];
-			VTableSignature sig = VTableSignature.FromMethod(method);
-			VTableSlot slot = vTbl.FindSlot(method);
-			Debug.Assert(slot != null);
+			if (def is TypeDef) {
+				var type = (TypeDef)def;
+				if (type.IsInterface)
+					return;
 
-			if (!method.IsAbstract) {
-				foreach (VTableSlot baseSlot in slot.Overrides) {
-					// Better on safe side, add references to both methods.
-					service.AddReference(method, new OverrideDirectiveReference(slot, baseSlot));
-					service.AddReference(baseSlot.MethodDef, new OverrideDirectiveReference(slot, baseSlot));
+				vTbl = service.GetVTables()[type];
+				foreach (var ifaceVTbl in vTbl.InterfaceSlots.Values) {
+					foreach (var slot in ifaceVTbl) {
+						if (slot.Overrides == null)
+							continue;
+						Debug.Assert(slot.Overrides.MethodDef.DeclaringType.IsInterface);
+						// A method in base type can implements an interface method for a
+						// derived type. If the base type/interface is not in our control, we should
+						// not rename the methods.
+						bool baseUnderCtrl = context.Modules.Contains(slot.MethodDef.DeclaringType.Module as ModuleDefMD);
+						bool ifaceUnderCtrl = context.Modules.Contains(slot.Overrides.MethodDef.DeclaringType.Module as ModuleDefMD);
+						if ((!baseUnderCtrl && ifaceUnderCtrl) || !service.CanRename(slot.MethodDef)) {
+							service.SetCanRename(slot.Overrides.MethodDef, false);
+						}
+						else if (baseUnderCtrl && !ifaceUnderCtrl || !service.CanRename(slot.Overrides.MethodDef)) {
+							service.SetCanRename(slot.MethodDef, false);
+						}
+					}
+				}
+			}
+			else if (def is MethodDef) {
+				var method = (MethodDef)def;
+				if (!method.IsVirtual)
+					return;
+
+				vTbl = service.GetVTables()[method.DeclaringType];
+				VTableSignature sig = VTableSignature.FromMethod(method);
+				var slots = vTbl.FindSlots(method);
+
+				if (!method.IsAbstract) {
+					foreach (var slot in slots) {
+						if (slot.Overrides == null)
+							continue;
+						// Better on safe side, add references to both methods.
+						service.AddReference(method, new OverrideDirectiveReference(slot, slot.Overrides));
+						service.AddReference(slot.Overrides.MethodDef, new OverrideDirectiveReference(slot, slot.Overrides));
+					}
+				}
+				else {
+					foreach (var slot in slots) {
+						if (slot.Overrides == null)
+							continue;
+						service.SetCanRename(method, false);
+						service.SetCanRename(slot.Overrides.MethodDef, false);
+					}
 				}
 			}
 		}
 
-		public void PreRename(ConfuserContext context, INameService service, IDnlibDef def) {
-			var method = def as MethodDef;
-			if (method == null || !method.IsVirtual)
-				return;
-
-			VTable vTbl = service.GetVTables()[method.DeclaringType];
-			if (vTbl == null) // This case occurs at late injected types, like delegates
-				return;
-			VTableSignature sig = VTableSignature.FromMethod(method);
-			VTableSlot slot = vTbl.FindSlot(method);
-			Debug.Assert(slot != null);
-			
-			// Can't rename virtual methods which implement an interface method or override a method declared in a base type,
-			// when the interface or base type is declared in an assembly that is not currently being processed
-			if (slot.Overrides.Any(slotOverride => !context.Modules.Any(module => module.Assembly.FullName == slotOverride.MethodDef.DeclaringType.DefinitionAssembly.FullName)))
-				service.SetCanRename(method, false);
+		public void PreRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
+			//
 		}
 
-		public void PostRename(ConfuserContext context, INameService service, IDnlibDef def) {
+		public void PostRename(ConfuserContext context, INameService service, ProtectionParameters parameters, IDnlibDef def) {
 			var method = def as MethodDef;
 			if (method == null || !method.IsVirtual || method.Overrides.Count == 0)
 				return;
@@ -55,9 +78,9 @@ namespace Confuser.Renamer.Analyzers {
 			      .RemoveWhere(impl => MethodDefOrRefComparer.Instance.Equals(impl.MethodDeclaration, method));
 		}
 
-		private class MethodDefOrRefComparer : IEqualityComparer<IMethodDefOrRef> {
+		class MethodDefOrRefComparer : IEqualityComparer<IMethodDefOrRef> {
 			public static readonly MethodDefOrRefComparer Instance = new MethodDefOrRefComparer();
-			private MethodDefOrRefComparer() { }
+			MethodDefOrRefComparer() { }
 
 			public bool Equals(IMethodDefOrRef x, IMethodDefOrRef y) {
 				return new SigComparer().Equals(x, y) && new SigComparer().Equals(x.DeclaringType, y.DeclaringType);
